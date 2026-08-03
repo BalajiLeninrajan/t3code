@@ -19,6 +19,11 @@ import { vim } from "@replit/codemirror-vim";
 import { tags } from "@lezer/highlight";
 import { useEffect, useImperativeHandle, useRef } from "react";
 
+import {
+  collapseExpandedComposerCursor,
+  expandCollapsedComposerCursor,
+  isCollapsedCursorAdjacentToInlineToken,
+} from "~/composer-logic";
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 import { composerChips } from "./codeMirrorComposerChips";
 import { markdownConceal } from "./codeMirrorMarkdownConceal";
@@ -195,12 +200,18 @@ export function CodeMirrorPromptEditor({
             if (!update.docChanged && !update.selectionSet) return;
             if (applyingRef.current) return;
             const text = update.state.doc.toString();
+            // CodeMirror has one offset space — the document — but the composer
+            // contract still distinguishes the collapsed cursor (chips count as
+            // one) from the expanded one, so translate on the way out rather
+            // than leaking CodeMirror's model upward.
             const head = update.state.selection.main.head;
+            const collapsed = collapseExpandedComposerCursor(text, head);
             latest.current.onChange(
               text,
+              collapsed,
               head,
-              head,
-              false,
+              isCollapsedCursorAdjacentToInlineToken(text, collapsed, "left") ||
+                isCollapsedCursorAdjacentToInlineToken(text, collapsed, "right"),
               referencedTerminalContextIds(text, latest.current.terminalContexts),
             );
           }),
@@ -223,10 +234,11 @@ export function CodeMirrorPromptEditor({
     if (!view) return;
     const current = view.state.doc.toString();
     if (current === value) return;
+    const expanded = expandCollapsedComposerCursor(value, cursor);
     applyingRef.current = true;
     view.dispatch({
       changes: { from: 0, to: current.length, insert: value },
-      selection: { anchor: Math.max(0, Math.min(value.length, cursor)) },
+      selection: { anchor: Math.max(0, Math.min(value.length, expanded)) },
     });
     applyingRef.current = false;
   }, [value, cursor]);
@@ -235,10 +247,13 @@ export function CodeMirrorPromptEditor({
     editorRef,
     (): ComposerPromptEditorHandle => ({
       focus: () => viewRef.current?.focus(),
+      // Callers pass a collapsed cursor, which is the composer's currency.
       focusAt: (nextCursor: number) => {
         const view = viewRef.current;
         if (!view) return;
-        const position = Math.max(0, Math.min(view.state.doc.length, nextCursor));
+        const text = view.state.doc.toString();
+        const expanded = expandCollapsedComposerCursor(text, nextCursor);
+        const position = Math.max(0, Math.min(view.state.doc.length, expanded));
         view.focus();
         view.dispatch({ selection: { anchor: position }, scrollIntoView: true });
       },
@@ -254,7 +269,7 @@ export function CodeMirrorPromptEditor({
         const head = view?.state.selection.main.head ?? latest.current.cursor;
         return {
           value: text,
-          cursor: head,
+          cursor: collapseExpandedComposerCursor(text, head),
           expandedCursor: head,
           terminalContextIds: referencedTerminalContextIds(text, latest.current.terminalContexts),
         };
