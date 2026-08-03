@@ -85,6 +85,8 @@ import {
   shouldUseCompactComposerFooter,
 } from "../composerFooterLayout";
 import { type ComposerPromptEditorHandle, ComposerPromptEditor } from "../ComposerPromptEditor";
+import { CodeMirrorPromptEditor } from "../CodeMirrorPromptEditor";
+import { useClientSettings } from "~/hooks/useSettings";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
@@ -989,6 +991,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Refs
   // ------------------------------------------------------------------
   const composerEditorRef = useRef<ComposerPromptEditorHandle>(null);
+  // Vim mode swaps the text editor only; everything around it in this file is
+  // shared, because the two implement the same props interface.
+  const vimModeEnabled = useClientSettings((settings) => settings.vimMode);
+  const PromptEditor = vimModeEnabled ? CodeMirrorPromptEditor : ComposerPromptEditor;
   const composerFormRef = useRef<HTMLFormElement>(null);
   const composerSurfaceRef = useRef<HTMLDivElement>(null);
   const composerSelectLockRef = useRef(false);
@@ -3037,7 +3043,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
 
             <div className="relative">
-              <ComposerPromptEditor
+              <PromptEditor
                 editorRef={composerEditorRef}
                 value={
                   isComposerApprovalState
