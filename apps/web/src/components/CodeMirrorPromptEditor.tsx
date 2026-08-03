@@ -20,6 +20,7 @@ import { tags } from "@lezer/highlight";
 import { useEffect, useImperativeHandle, useRef } from "react";
 
 import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
+import { composerChips } from "./codeMirrorComposerChips";
 import { markdownConceal } from "./codeMirrorMarkdownConceal";
 import { cn } from "~/lib/utils";
 import type { ComposerPromptEditorHandle, ComposerPromptEditorProps } from "./ComposerPromptEditor";
@@ -96,6 +97,7 @@ const editorTheme = EditorView.theme({
   ".cm-md-h6": { color: "var(--ctp-lavender)" },
   ".cm-md-bullet": { color: "var(--ctp-mauve)", marginRight: "0.35em" },
   ".cm-md-quote": { color: "var(--ctp-overlay1)", marginRight: "0.4em" },
+  ".cm-composer-chip": { display: "inline-flex", verticalAlign: "middle", lineHeight: "1" },
 });
 
 /** Hybrid `number` + `relativenumber`: the cursor's line shows its own number. */
@@ -180,6 +182,11 @@ export function CodeMirrorPromptEditor({
           markdown(),
           syntaxHighlighting(markdownHighlightStyle),
           markdownConceal(),
+          composerChips(() => ({
+            terminalContextLabels: latest.current.terminalContexts.map(
+              (context) => context.terminalLabel,
+            ),
+          })),
           EditorView.lineWrapping,
           editorTheme,
           commandKeys,
