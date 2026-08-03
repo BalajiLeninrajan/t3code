@@ -21,8 +21,28 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 
 const TITLEBAR_HEIGHT = 40;
 const TITLEBAR_COLOR = "#01000000"; // #00000000 does not work correctly on Linux
-const TITLEBAR_LIGHT_SYMBOL_COLOR = "#1f2937";
-const TITLEBAR_DARK_SYMBOL_COLOR = "#f8fafc";
+
+/*
+ * Native chrome painted by Electron rather than the renderer: the window
+ * background shown before/around the web app, the titlebar overlay symbols,
+ * and the WSL connecting splash.
+ *
+ * These must track the renderer's Catppuccin palette (Latte in light, Mocha in
+ * dark). The background in particular is what shows during window creation and
+ * while resizing, so a mismatch here reads as a flash of the wrong color around
+ * the app. Keep in sync with --background (mantle) and --foreground (text) in
+ * apps/web/src/index.css, and with the pre-hydration colors in
+ * apps/web/index.html.
+ */
+const LATTE_MANTLE = "#e6e9ef";
+const LATTE_TEXT = "#4c4f69";
+const LATTE_SUBTEXT0 = "#6c6f85";
+const MOCHA_MANTLE = "#181825";
+const MOCHA_TEXT = "#cdd6f4";
+const MOCHA_SUBTEXT0 = "#a6adc8";
+
+const TITLEBAR_LIGHT_SYMBOL_COLOR = LATTE_TEXT;
+const TITLEBAR_DARK_SYMBOL_COLOR = MOCHA_TEXT;
 const MAIN_WINDOW_BOUNDS_PERSIST_DEBOUNCE_MS = 500;
 const DEVELOPMENT_LOAD_RETRY_DELAYS_MS = [100, 250, 500, 1_000, 2_000] as const;
 const DEVELOPMENT_RETRYABLE_LOAD_ERROR_CODES = new Set([
@@ -100,7 +120,7 @@ function getIconOption(
 }
 
 function getInitialWindowBackgroundColor(shouldUseDarkColors: boolean): string {
-  return shouldUseDarkColors ? "#0a0a0a" : "#ffffff";
+  return shouldUseDarkColors ? MOCHA_MANTLE : LATTE_MANTLE;
 }
 
 type DisplayBounds = Pick<Electron.Rectangle, "x" | "y" | "width" | "height">;
@@ -147,10 +167,12 @@ export function resolveInitialMainWindowBounds(
 // a data URL so it needs no bundled asset and no backend — pure CSS, no JS.
 function buildConnectingSplashDataUrl(shouldUseDarkColors: boolean): string {
   const background = getInitialWindowBackgroundColor(shouldUseDarkColors);
-  const label = shouldUseDarkColors ? "#9ca3af" : "#6b7280";
-  const accent = shouldUseDarkColors ? "#f8fafc" : "#1f2937";
-  const track = shouldUseDarkColors ? "rgba(248,250,252,0.18)" : "rgba(31,41,55,0.18)";
-  const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>html,body{margin:0;height:100%}body{background:${background};color:${label};font-family:system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;-webkit-user-select:none;user-select:none;-webkit-app-region:drag}.spinner{width:26px;height:26px;border:3px solid ${track};border-top-color:${accent};border-radius:50%;animation:spin .8s linear infinite}.label{font-size:13px}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div class="spinner"></div><div class="label">Connecting to WSL…</div></body></html>`;
+  const label = shouldUseDarkColors ? MOCHA_SUBTEXT0 : LATTE_SUBTEXT0;
+  const accent = shouldUseDarkColors ? MOCHA_TEXT : LATTE_TEXT;
+  // The spinner track is the accent at low alpha; the CSP blocks everything but
+  // inline styles, so this stays a literal rather than a color-mix on a token.
+  const track = shouldUseDarkColors ? "rgba(205,214,244,0.18)" : "rgba(76,79,105,0.18)";
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'"><style>html,body{margin:0;height:100%}body{background:${background};color:${label};font-family:Inter,system-ui,-apple-system,'Segoe UI',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;-webkit-user-select:none;user-select:none;-webkit-app-region:drag}.spinner{width:26px;height:26px;border:3px solid ${track};border-top-color:${accent};border-radius:50%;animation:spin .8s linear infinite}.label{font-size:13px}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div class="spinner"></div><div class="label">Connecting to WSL…</div></body></html>`;
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 

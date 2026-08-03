@@ -5,9 +5,10 @@ import { passkeys } from "@clerk/electron/passkeys";
 import { ClerkProvider as ElectronClerkProvider } from "@clerk/electron/react";
 import { createHashHistory, createBrowserHistory } from "@tanstack/react-router";
 
-import "@fontsource-variable/dm-sans/index.css";
+import "@fontsource-variable/inter/index.css";
 import "@fontsource/jetbrains-mono/400.css";
 import "@fontsource/jetbrains-mono/500.css";
+import "./fonts/jetbrains-mono-nerd-font.css";
 import "./index.css";
 
 import { isElectron } from "./env";
