@@ -77,8 +77,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 :root {
   --app-scrollbar-width: 6px;
-  --app-scrollbar-thumb: rgb(217 217 217);
-  --app-scrollbar-thumb-hover: rgb(191 191 191);
+  --app-scrollbar-thumb: var(--ctp-surface1);
+  --app-scrollbar-thumb-hover: var(--ctp-surface2);
   /*
    * Compact UI geometry. Keep these values semantic so sidebar, palette,
    * tooltip, and toolbar controls cannot quietly drift apart.
@@ -105,8 +105,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 .dark {
-  --app-scrollbar-thumb: rgb(255 255 255 / 8%);
-  --app-scrollbar-thumb-hover: rgb(255 255 255 / 12%);
   --glass-blur: 16px;
   --glass-saturation: 1.08;
 }
@@ -131,7 +129,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @theme inline {
-  --color-zinc-25: oklch(99.2% 0 0);
+  /* Retained as the name for "the lifted neutral surface" so existing
+     bg-zinc-25 call sites follow the palette instead of a fixed near-white. */
+  --color-zinc-25: var(--ctp-base);
   --animate-skeleton: skeleton 2s -1s infinite linear;
   /* Duty-cycled indicator animations: long holds with stepped ramps, so the
      compositor updates discrete frames instead of every vsync. */
@@ -139,10 +139,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --animate-status-ping: status-ping 2s infinite;
   --animate-sidebar-working-text: sidebar-working-text 3.4s infinite;
   --font-sans:
-    "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    sans-serif;
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  /* The vendored Nerd Font carries text glyphs only; the symbols face behind it
+     supplies the icon codepoints. See fonts/jetbrains-mono-nerd-font.css. */
   --font-mono:
-    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    "JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrains Mono", "Symbols Nerd Font Mono",
+    Consolas, "Liberation Mono", Menlo, monospace;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-success-foreground: var(--success-foreground);
@@ -307,16 +309,18 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     );
   }
 
+  /* Blueprint art ramps sky -> blue -> a deepened blue. The dark flavor pulls
+     the ramp toward crust so the art stays behind the content it backs. */
   .stage-blueprint {
-    --stage-bp-top: #67c2ff;
-    --stage-bp-mid: #347ff8;
-    --stage-bp-bottom: #1538d0;
+    --stage-bp-top: var(--ctp-sky);
+    --stage-bp-mid: var(--ctp-blue);
+    --stage-bp-bottom: color-mix(in srgb, var(--ctp-blue) 55%, var(--ctp-crust));
   }
 
   .dark .stage-blueprint {
-    --stage-bp-top: #3a7ad1;
-    --stage-bp-mid: #2050ae;
-    --stage-bp-bottom: #101f6e;
+    --stage-bp-top: color-mix(in srgb, var(--ctp-sky) 60%, var(--ctp-crust));
+    --stage-bp-mid: color-mix(in srgb, var(--ctp-blue) 45%, var(--ctp-crust));
+    --stage-bp-bottom: color-mix(in srgb, var(--ctp-blue) 22%, var(--ctp-crust));
   }
 
   .workspace-topbar {
@@ -850,149 +854,169 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   animation-duration: 0s !important;
 }
 
+/*
+ * Catppuccin. Light renders the Latte flavor, dark renders Mocha.
+ *
+ * The --ctp-* variables are the raw palette and are the only place literal
+ * flavor colors appear; every semantic token below is expressed in terms of
+ * them. Because the dark variant redeclares --ctp-* on this same element, the
+ * semantic tokens re-resolve per flavor without being restated.
+ *
+ * Surface hierarchy, in both flavors: crust is the most recessed (sidebar),
+ * mantle is the app chrome, base is the lifted content surface, and
+ * surface0/1/2 step up from there for controls, borders, and hover states.
+ */
 :root {
   color-scheme: light;
   --radius: 0.625rem;
-  --background: var(--color-zinc-25);
+
+  /* Catppuccin Latte */
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;
+  --ctp-subtext1: #5c5f77;
+  --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;
+  --ctp-overlay1: #8c8fa1;
+  --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+  /* Text laid over a filled --ctp-mauve control. Latte's mauve is dark, so the
+     readable pairing is a light surface; Mocha inverts this below. */
+  --ctp-on-primary: var(--ctp-base);
+
+  --background: var(--ctp-mantle);
   --app-chrome-background: var(--background);
   --surface-raised: color-mix(in srgb, var(--card) 20%, transparent);
-  --foreground: var(--color-zinc-800);
-  --card: var(--color-white);
-  --card-foreground: var(--color-zinc-800);
-  --popover: var(--color-white);
-  --popover-foreground: var(--color-zinc-800);
-  --primary: oklch(0.488 0.217 264);
-  --primary-foreground: var(--color-white);
-  --secondary: var(--color-zinc-50);
-  --secondary-foreground: var(--color-zinc-800);
-  --muted: var(--color-zinc-50);
-  --muted-foreground: var(--color-zinc-500);
-  --accent: var(--color-zinc-100);
-  --accent-foreground: var(--color-zinc-900);
-  --destructive: var(--color-red-500);
-  --border: var(--color-zinc-200);
-  --input: var(--color-zinc-300);
-  --ring: oklch(0.488 0.217 264);
-  --destructive-foreground: var(--color-red-700);
-  --info: var(--color-blue-500);
-  --info-foreground: var(--color-blue-700);
-  --success: var(--color-emerald-500);
-  --success-foreground: var(--color-emerald-700);
-  --warning: var(--color-amber-500);
-  --warning-foreground: var(--color-amber-700);
-  /* Keep every sidebar primitive on the same light surface hierarchy, including
+  --foreground: var(--ctp-text);
+  --card: var(--ctp-base);
+  --card-foreground: var(--ctp-text);
+  --popover: var(--ctp-base);
+  --popover-foreground: var(--ctp-text);
+  --primary: var(--ctp-mauve);
+  --primary-foreground: var(--ctp-on-primary);
+  --secondary: var(--ctp-crust);
+  --secondary-foreground: var(--ctp-text);
+  --muted: var(--ctp-crust);
+  --muted-foreground: var(--ctp-subtext0);
+  --accent: var(--ctp-surface0);
+  --accent-foreground: var(--ctp-text);
+  --destructive: var(--ctp-red);
+  --border: var(--ctp-surface0);
+  --input: var(--ctp-surface1);
+  --ring: var(--ctp-mauve);
+  --destructive-foreground: var(--ctp-red);
+  --info: var(--ctp-blue);
+  --info-foreground: var(--ctp-blue);
+  --success: var(--ctp-green);
+  --success-foreground: var(--ctp-green);
+  --warning: var(--ctp-yellow);
+  --warning-foreground: var(--ctp-yellow);
+  /* Keep every sidebar primitive on the same surface hierarchy, including
      portaled mobile sheets and settings navigation outside the app sidebar. */
-  --sidebar: var(--color-zinc-50);
+  --sidebar: var(--ctp-crust);
   --sidebar-foreground: var(--foreground);
   --sidebar-muted-foreground: var(--muted-foreground);
-  --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-25);
-  --sidebar-row-active: var(--color-white);
-  --sidebar-row-selected: var(--color-white);
+  --sidebar-control-surface: var(--ctp-surface0);
+  --sidebar-row-hover: var(--ctp-surface0);
+  --sidebar-row-active: var(--ctp-surface1);
+  --sidebar-row-selected: var(--ctp-surface1);
   --sidebar-border: var(--border);
   --sidebar-stage-fade: var(--sidebar);
 
   @variant dark {
     color-scheme: dark;
-    /* Keep the workspace in the same neutral-black family as sidebar v2.
-       Surfaces lift from this base instead of starting from a milky gray. */
-    --background: var(--color-neutral-950);
-    --app-chrome-background: var(--background);
+
+    /* Catppuccin Mocha */
+    --ctp-rosewater: #f5e0dc;
+    --ctp-flamingo: #f2cdcd;
+    --ctp-pink: #f5c2e7;
+    --ctp-mauve: #cba6f7;
+    --ctp-red: #f38ba8;
+    --ctp-maroon: #eba0ac;
+    --ctp-peach: #fab387;
+    --ctp-yellow: #f9e2af;
+    --ctp-green: #a6e3a1;
+    --ctp-teal: #94e2d5;
+    --ctp-sky: #89dceb;
+    --ctp-sapphire: #74c7ec;
+    --ctp-blue: #89b4fa;
+    --ctp-lavender: #b4befe;
+    --ctp-text: #cdd6f4;
+    --ctp-subtext1: #bac2de;
+    --ctp-subtext0: #a6adc8;
+    --ctp-overlay2: #9399b2;
+    --ctp-overlay1: #7f849c;
+    --ctp-overlay0: #6c7086;
+    --ctp-surface2: #585b70;
+    --ctp-surface1: #45475a;
+    --ctp-surface0: #313244;
+    --ctp-base: #1e1e2e;
+    --ctp-mantle: #181825;
+    --ctp-crust: #11111b;
+    /* Mocha's mauve is light, so filled controls take dark text. */
+    --ctp-on-primary: var(--ctp-crust);
+
     --surface-raised: var(--secondary);
-    --foreground: var(--color-neutral-100);
-    --card: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --card-foreground: var(--color-neutral-100);
-    --popover: color-mix(in srgb, var(--background) 94%, var(--color-white));
-    --popover-foreground: var(--color-neutral-100);
-    --primary: oklch(0.588 0.217 264);
-    --primary-foreground: var(--color-white);
-    --secondary: --alpha(var(--color-white) / 4%);
-    --secondary-foreground: var(--color-neutral-100);
-    --muted: --alpha(var(--color-white) / 4%);
-    --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
-    --accent: --alpha(var(--color-white) / 4%);
-    --accent-foreground: var(--color-neutral-100);
-    --destructive: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
-    --border: --alpha(var(--color-white) / 6%);
-    --input: --alpha(var(--color-white) / 8%);
-    --ring: oklch(0.588 0.217 264);
-    --destructive-foreground: var(--color-red-400);
-    --info: var(--color-blue-500);
-    --info-foreground: var(--color-blue-400);
-    --success: var(--color-emerald-500);
-    --success-foreground: var(--color-emerald-400);
-    --warning: var(--color-amber-500);
-    --warning-foreground: var(--color-amber-400);
-    --sidebar: var(--card);
-    --sidebar-foreground: var(--foreground);
-    --sidebar-muted-foreground: var(--muted-foreground);
-    --sidebar-control-surface: var(--muted);
-    --sidebar-row-hover: var(--accent);
-    --sidebar-row-active: var(--accent);
-    --sidebar-row-selected: var(--muted);
-    --sidebar-border: var(--border);
-    --sidebar-stage-fade: var(--card);
+    /* Popovers sit one step above cards; a partial mix toward surface0 keeps
+       that lift subtle rather than jumping a full palette step. */
+    --popover: color-mix(in srgb, var(--ctp-base) 55%, var(--ctp-surface0));
+    --secondary: var(--ctp-surface0);
+    --muted: var(--ctp-surface0);
+    --accent: var(--ctp-surface1);
+    --border: var(--ctp-surface0);
+    --input: var(--ctp-surface1);
+    --sidebar-control-surface: var(--ctp-surface0);
+    --sidebar-row-hover: var(--ctp-surface0);
+    --sidebar-row-active: var(--ctp-surface1);
+    --sidebar-row-selected: var(--ctp-surface1);
   }
 }
 
-/* Keep both navigation implementations on the same quiet zinc hierarchy:
-   zinc-50 navigation, zinc-25 hover, and white selected/raised surfaces.
-   The version attribute remains useful for layout-specific styling without
-   changing the color system when the beta is toggled. */
+/* Both navigation implementations sit on the palette's recessed surface
+   (crust), with content surfaces lifting to base above it. The version
+   attribute remains useful for layout-specific styling without changing the
+   color system when the beta is toggled.
+
+   These are the same values the root block resolves to, restated here only so
+   the panel paints its own background and so the stage-channel header art
+   ramps to THIS panel's surface rather than the global chrome background —
+   ramping to the wrong surface leaves a visible seam. Both flavors share this
+   block because --ctp-* already flips between Latte and Mocha. */
 [data-sidebar-version="v1"],
 [data-sidebar-version="v2"] {
-  --background: var(--color-zinc-25);
-  --foreground: var(--color-zinc-800);
-  --card: var(--color-white);
-  --card-foreground: var(--color-zinc-800);
-  --accent: var(--color-zinc-100);
-  --accent-foreground: var(--color-zinc-900);
-  --muted: var(--color-zinc-50);
-  --muted-foreground: var(--color-zinc-500);
-  --border: var(--color-zinc-200);
-  --input: var(--color-zinc-300);
-  --sidebar: var(--color-zinc-50);
-  --sidebar-foreground: var(--color-zinc-800);
-  --sidebar-muted-foreground: var(--color-zinc-500);
-  --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-25);
-  --sidebar-row-active: var(--color-white);
-  --sidebar-row-selected: var(--color-white);
-  --sidebar-border: var(--color-zinc-200);
+  --sidebar: var(--ctp-crust);
+  --sidebar-foreground: var(--ctp-text);
+  --sidebar-muted-foreground: var(--ctp-subtext0);
+  --sidebar-control-surface: var(--ctp-surface0);
+  --sidebar-row-hover: var(--ctp-surface0);
+  --sidebar-row-active: var(--ctp-surface1);
+  --sidebar-row-selected: var(--ctp-surface1);
+  --sidebar-border: var(--ctp-surface0);
   --sidebar-stage-fade: var(--sidebar);
   background-color: var(--sidebar);
 }
 
-.dark [data-sidebar-version="v1"],
-.dark [data-sidebar-version="v2"] {
-  --background: #000;
-  --foreground: #f1f3f7;
-  --card: #000;
-  --card-foreground: var(--foreground);
-  --accent: #191a1d;
-  --accent-foreground: #f7f9ff;
-  --muted: #0a0a0a;
-  --muted-foreground: #a3a3a3;
-  --border: rgb(255 255 255 / 8%);
-  --input: rgb(255 255 255 / 18%);
-  --sidebar: var(--card);
-  --sidebar-foreground: var(--foreground);
-  --sidebar-muted-foreground: var(--muted-foreground);
-  --sidebar-control-surface: var(--muted);
-  --sidebar-row-hover: color-mix(in srgb, var(--foreground) 8%, transparent);
-  --sidebar-row-active: color-mix(in srgb, var(--foreground) 11%, transparent);
-  --sidebar-row-selected: color-mix(in srgb, var(--foreground) 7%, transparent);
-  --sidebar-border: var(--border);
-  /* The stage-channel header art must ramp to THIS panel's surface, not the
-     global chrome background, or the fade shows a seam (same rule as the
-     light palette above). */
-  --sidebar-stage-fade: var(--card);
-}
-
 body {
   font-family:
-    "DM Sans Variable",
-    "DM Sans",
+    "Inter Variable",
+    "Inter",
     -apple-system,
     BlinkMacSystemFont,
     "Segoe UI",
@@ -1048,8 +1072,7 @@ body {
 
 pre,
 code {
-  font-family:
-    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 /* Window drag region (frameless titlebar) */
@@ -1593,13 +1616,13 @@ label:has(> select#reasoning-effort) select {
 .ultrathink-frame {
   --ultrathink-spectrum: linear-gradient(
     120deg,
-    #ff6b6b 0%,
-    #f59e0b 18%,
-    #22c55e 36%,
-    #14b8a6 54%,
-    #3b82f6 72%,
-    #ec4899 90%,
-    #ff6b6b 100%
+    var(--ctp-red) 0%,
+    var(--ctp-peach) 18%,
+    var(--ctp-green) 36%,
+    var(--ctp-teal) 54%,
+    var(--ctp-blue) 72%,
+    var(--ctp-pink) 90%,
+    var(--ctp-red) 100%
   );
   position: relative;
   background: transparent;

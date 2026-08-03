@@ -1064,7 +1064,8 @@ function startAnnotation(): void {
     if (tool === "draw") {
       const stroke: PreviewAnnotationStrokeTarget = {
         id: nextId("stroke"),
-        color: annotationTheme?.primary ?? "#2563eb",
+        // Catppuccin Latte mauve, matching --t3-primary's fallback in Annotation.css.
+        color: annotationTheme?.primary ?? "#8839ef",
         width: 4,
         points: [dragStart],
         bounds: { x: dragStart.x, y: dragStart.y, width: 1, height: 1 },

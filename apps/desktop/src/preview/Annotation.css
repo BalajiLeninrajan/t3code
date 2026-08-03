@@ -23,26 +23,37 @@
   --radius-2xl: calc(var(--t3-radius) + 8px);
 }
 
+/*
+ * Baked-in fallbacks only. PickPreload overwrites every --t3-* below from the
+ * live app theme (see applyAnnotationTheme), so these apply just until the
+ * first theme is delivered. They mirror Catppuccin Latte because the overlay
+ * defaults to the light flavor, and are kept in sync with the same-named
+ * fallbacks in apps/web/src/browser/annotationTheme.ts.
+ *
+ * The overlay is injected into the previewed page's shadow DOM, which cannot
+ * reach the app's bundled webfonts; the families below resolve only if
+ * installed locally, otherwise the generic tail applies.
+ */
 :host {
   --t3-font-sans:
-    "DM Sans Variable", "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui,
-    sans-serif;
+    "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --t3-font-mono:
-    "SF Mono", "SFMono-Regular", "JetBrains Mono", Consolas, "Liberation Mono", Menlo, monospace;
+    "JetBrainsMono Nerd Font", "JetBrainsMono NF", "JetBrains Mono", "Symbols Nerd Font Mono",
+    Consolas, "Liberation Mono", Menlo, monospace;
   --t3-radius: 0.625rem;
-  --t3-background: white;
-  --t3-foreground: oklch(0.269 0 0);
-  --t3-popover: white;
-  --t3-popover-foreground: oklch(0.269 0 0);
-  --t3-primary: oklch(0.488 0.217 264);
-  --t3-primary-foreground: white;
-  --t3-muted: rgb(0 0 0 / 4%);
-  --t3-muted-foreground: oklch(0.556 0 0);
-  --t3-accent: rgb(0 0 0 / 4%);
-  --t3-accent-foreground: oklch(0.269 0 0);
-  --t3-border: rgb(0 0 0 / 8%);
-  --t3-input: rgb(0 0 0 / 10%);
-  --t3-ring: oklch(0.488 0.217 264);
+  --t3-background: #e6e9ef;
+  --t3-foreground: #4c4f69;
+  --t3-popover: #eff1f5;
+  --t3-popover-foreground: #4c4f69;
+  --t3-primary: #8839ef;
+  --t3-primary-foreground: #eff1f5;
+  --t3-muted: #dce0e8;
+  --t3-muted-foreground: #6c6f85;
+  --t3-accent: #ccd0da;
+  --t3-accent-foreground: #4c4f69;
+  --t3-border: #ccd0da;
+  --t3-input: #bcc0cc;
+  --t3-ring: #8839ef;
   color: var(--t3-foreground);
   font-family: var(--t3-font-sans);
 }

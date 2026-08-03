@@ -105,6 +105,11 @@ const PICTURE_IN_PICTURE_INITIAL_HEIGHT = 320;
 const PICTURE_IN_PICTURE_MIN_WIDTH = 240;
 const PICTURE_IN_PICTURE_MIN_HEIGHT = 160;
 const PICTURE_IN_PICTURE_ASPECT_RATIO_EPSILON = 0.002;
+// Catppuccin Mocha crust. The picture-in-picture window is always dark (it
+// declares color-scheme: dark regardless of the app theme), so this is pinned
+// to the dark flavor rather than tracking Latte/Mocha. It backs the window and
+// letterboxes the scaled preview frame.
+const PICTURE_IN_PICTURE_BACKGROUND = "#11111b";
 const DIAGNOSTIC_BUFFER_LIMIT = 200;
 const MAX_ARTIFACT_SITE_SLUG_LENGTH = 80;
 const AGENT_CURSOR_MOVE_MS = 160;
@@ -141,7 +146,7 @@ export const buildPreviewPictureInPictureDataUrl = (): string => {
     >
     <meta name="color-scheme" content="dark">
     <style>
-      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #111; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: ${PICTURE_IN_PICTURE_BACKGROUND}; }
       body { display: grid; place-items: center; }
       img { width: 100%; height: 100%; object-fit: contain; user-select: none; -webkit-user-drag: none; }
     </style>
@@ -2352,7 +2357,7 @@ const makeNativeOperations = Effect.fn("PreviewManager.makeOperations")(function
               minimizable: false,
               resizable: true,
               skipTaskbar: true,
-              backgroundColor: "#111111",
+              backgroundColor: PICTURE_IN_PICTURE_BACKGROUND,
               ...(hostPlatform === "darwin" ? { type: "panel" as const } : {}),
               webPreferences: {
                 preload: pictureInPicturePreloadPath,

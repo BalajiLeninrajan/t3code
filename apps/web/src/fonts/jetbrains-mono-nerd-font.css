@@ -1,0 +1,38 @@
+/*
+ * JetBrainsMono Nerd Font — text glyphs only.
+ *
+ * The vendored faces are subset to text ranges (Latin, punctuation, currency,
+ * arrows, math, box drawing, block elements, and misc symbols). The Nerd Font
+ * icon glyphs in the private-use areas are deliberately NOT included here:
+ * shipping them would take each weight from ~59KB to ~1MB, and
+ * `terminal/ghostty/fonts/SymbolsNerdFontMono-Regular.woff2` already supplies
+ * exactly those codepoints. Both --font-mono and the terminal font stack list
+ * the symbols face after this one, so icons still resolve through the normal
+ * font fallback chain.
+ *
+ * Licensed under the SIL Open Font License 1.1; see ./LICENSE.
+ */
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./JetBrainsMonoNerdFont-Regular.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./JetBrainsMonoNerdFont-Medium.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "JetBrainsMono Nerd Font";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./JetBrainsMonoNerdFont-Bold.woff2") format("woff2");
+}
