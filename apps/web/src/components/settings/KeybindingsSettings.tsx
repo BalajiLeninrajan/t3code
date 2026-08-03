@@ -35,6 +35,7 @@ import {
 
 import { isElectron } from "../../env";
 import { useOpenInPreferredEditor } from "../../editorPreferences";
+import { useClientSettings, useUpdateClientSettings } from "../../hooks/useSettings";
 import { formatShortcutLabel } from "../../keybindings";
 import { cn } from "../../lib/utils";
 import {
@@ -51,6 +52,7 @@ import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { ScrollArea } from "../ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { Toggle } from "../ui/toggle";
 import { toastManager } from "../ui/toast";
 import {
@@ -69,7 +71,7 @@ import {
   unknownWhenVariables,
   whenAstToExpression,
 } from "./KeybindingsSettings.logic";
-import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
+import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -1083,6 +1085,8 @@ function NewKeybindingTableRow({
 }
 
 export function KeybindingsSettingsPanel() {
+  const vimMode = useClientSettings((settings) => settings.vimMode);
+  const updateClientSettings = useUpdateClientSettings();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const keybindingsConfigPath = useAtomValue(primaryServerKeybindingsConfigPathAtom);
   const availableEditors = useAtomValue(primaryServerAvailableEditorsAtom);
@@ -1230,6 +1234,20 @@ export function KeybindingsSettingsPanel() {
 
   return (
     <SettingsPageContainer className="max-w-5xl">
+      <SettingsSection title="Vim mode">
+        <SettingsRow
+          {...searchableSetting("vim-mode")}
+          description="Modal navigation modelled on LazyVim. Outside text fields, hjkl-style motions move within a pane, ⌃h/⌃j/⌃k/⌃l move between panes, H/L switch threads, and Space opens the leader menu. Press i to return to the composer, Esc to leave it."
+          control={
+            <Switch
+              checked={vimMode}
+              onCheckedChange={(checked) => updateClientSettings({ vimMode: Boolean(checked) })}
+              aria-label="Vim mode"
+            />
+          }
+        />
+      </SettingsSection>
+
       <SettingsSection
         {...searchableSetting("keybindings")}
         headerAction={

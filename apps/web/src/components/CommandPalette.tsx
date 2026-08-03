@@ -131,6 +131,7 @@ import { Kbd, KbdGroup } from "./ui/kbd";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { ComposerHandleContext, useComposerHandleContext } from "../composerHandleContext";
+import { isComposerAutoFocusSuppressed } from "../vim/autoFocus";
 import type { ChatComposerHandle } from "./chat/ChatComposer";
 import { getProjectOrderKey, selectProjectGroupingSettings } from "../logicalProject";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
@@ -498,7 +499,10 @@ function CommandPaletteDialog(props: {
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
-        composerHandleRef?.current?.focusAtEnd();
+        // Vim mode hands focus back to the pane you were in instead.
+        if (!isComposerAutoFocusSuppressed()) {
+          composerHandleRef?.current?.focusAtEnd();
+        }
         return false;
       }}
       onBackdropPointerDown={() => {

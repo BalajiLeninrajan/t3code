@@ -130,6 +130,10 @@ export const ClientSettingsSchema = Schema.Struct({
   timestampFormat: TimestampFormat.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_TIMESTAMP_FORMAT)),
   ),
+  // Modal, LazyVim-flavoured navigation for the whole app. Off by default:
+  // it takes over every unmodified key outside text fields, which is only
+  // ever what a vim user wants.
+  vimMode: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
@@ -712,6 +716,7 @@ export const ClientSettingsPatch = Schema.Struct({
   sidebarV2Enabled: Schema.optionalKey(Schema.Boolean),
   sidebarV2ConfiguredByUser: Schema.optionalKey(Schema.Boolean),
   timestampFormat: Schema.optionalKey(TimestampFormat),
+  vimMode: Schema.optionalKey(Schema.Boolean),
   wordWrap: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

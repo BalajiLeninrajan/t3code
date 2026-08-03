@@ -217,6 +217,10 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                 key={entry.instanceId}
                 className="relative w-full"
                 data-model-picker-provider={entry.instanceId}
+                // Which provider is current, readable from the DOM so vim
+                // mode's ⌃n/⌃p can step through the rail.
+                data-selected={isSelected ? "true" : undefined}
+                data-disabled={isDisabled ? "true" : undefined}
               >
                 <Tooltip>
                   <TooltipTrigger render={trigger} />

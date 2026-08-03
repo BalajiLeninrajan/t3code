@@ -281,6 +281,7 @@ import {
 import type { ThreadSyncPhase } from "../threadSync";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
+import { isComposerAutoFocusSuppressed } from "../vim/autoFocus";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { previewEnvironment } from "../state/preview";
@@ -2613,7 +2614,10 @@ function ChatViewContent(props: ChatViewProps) {
     [activeServerThread, draftId, routeThreadKey, routeThreadRef],
   );
 
+  // Every caller here is the app deciding to put you in the composer — thread
+  // open, terminal close, a control changing. Vim mode reserves that for `i`.
   const focusComposer = useCallback(() => {
+    if (isComposerAutoFocusSuppressed()) return;
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
   const scheduleComposerFocus = useCallback(() => {
@@ -5795,7 +5799,7 @@ function ChatViewContent(props: ChatViewProps) {
               />
             </div>
             {/* Messages Wrapper */}
-            <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 flex-1 flex-col" data-vim-region="chat">
               {/* Messages — LegendList handles virtualization and scrolling internally */}
               <MessagesTimeline
                 key={activeThread.id}

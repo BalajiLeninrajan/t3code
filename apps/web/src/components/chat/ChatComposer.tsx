@@ -310,6 +310,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
               type="button"
               onClick={props.onToggleInteractionMode}
               aria-label={interactionModeTooltip}
+              // Marker for vim mode's `<leader>mp`. See `vim/appControls.ts`.
+              data-composer-interaction-mode-toggle=""
             />
           }
         >
@@ -337,6 +339,8 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
           onValueChange={(value) => props.onRuntimeModeChange(value!)}
         >
           <TooltipTrigger
+            // Marker so vim mode's `<leader>ma` can open this. See `vim/appControls.ts`.
+            data-composer-runtime-mode-trigger=""
             render={<ComposerSelectControl className="font-medium" aria-label="Runtime mode" />}
           >
             <ComposerControlIcon icon={RuntimeModeIcon} />

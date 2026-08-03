@@ -1718,6 +1718,8 @@ export default function GitActionsControl({
               className="ps-[8.5px]"
               disabled={isGitActionRunning || quickAction.disabled}
               onClick={runQuickAction}
+              // Marker for vim mode's `<leader>gc`. See `vim/appControls.ts`.
+              data-git-quick-action=""
             >
               <GitQuickActionIcon quickAction={quickAction} SourceControlIcon={SourceControlIcon} />
               <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
