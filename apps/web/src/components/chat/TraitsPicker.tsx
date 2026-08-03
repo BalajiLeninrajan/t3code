@@ -497,6 +497,9 @@ export const TraitsPicker = memo(function TraitsPicker({
       }}
     >
       <MenuTrigger
+        // Marker so vim mode's `<leader>mr` can open this menu; it has no
+        // keybinding command of its own. See `vim/composerTraits.ts`.
+        data-composer-traits-trigger=""
         render={
           <ComposerControl
             variant={triggerVariant ?? "ghost"}

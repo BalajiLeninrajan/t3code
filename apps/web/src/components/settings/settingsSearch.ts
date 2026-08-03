@@ -132,6 +132,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/keybindings",
   },
   {
+    id: "vim-mode",
+    title: "Vim mode",
+    to: "/settings/keybindings",
+  },
+  {
     id: "providers",
     title: "Providers",
     to: "/settings/providers",

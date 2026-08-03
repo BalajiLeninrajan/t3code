@@ -876,7 +876,7 @@ export interface ComposerPromptEditorHandle {
   };
 }
 
-interface ComposerPromptEditorProps {
+export interface ComposerPromptEditorProps {
   value: string;
   cursor: number;
   terminalContexts: ReadonlyArray<TerminalContextDraft>;

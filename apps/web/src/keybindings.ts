@@ -189,6 +189,19 @@ function findEffectiveShortcutForCommand(
   return null;
 }
 
+/**
+ * The chord a user would press today to run `command`, honouring both their
+ * customizations and the `when` clauses that apply in `options.context`.
+ * Returns null when the command is unbound.
+ */
+export function shortcutForCommand(
+  keybindings: ResolvedKeybindingsConfig,
+  command: KeybindingCommand,
+  options?: ShortcutMatchOptions,
+): KeybindingShortcut | null {
+  return findEffectiveShortcutForCommand(keybindings, command, options);
+}
+
 function matchesCommandShortcut(
   event: ShortcutEventLike,
   keybindings: ResolvedKeybindingsConfig,

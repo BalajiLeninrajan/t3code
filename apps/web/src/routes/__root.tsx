@@ -34,6 +34,7 @@ import {
   selectProjectGroupingSettings,
 } from "../logicalProject";
 import { useUiStateStore } from "../uiStateStore";
+import { VimNavigation } from "../vim/VimNavigation";
 import { syncBrowserChromeTheme } from "../hooks/useTheme";
 import { configureClientTracing } from "../observability/clientTracing";
 import { resolveInitialServerAuthGateState } from "../environments/primary";
@@ -117,6 +118,8 @@ function RootRouteView() {
 
   const appShell = (
     <CommandPalette>
+      {/* Inside CommandPalette so vim's insert command can reach the composer handle. */}
+      <VimNavigation />
       <AppSidebarLayout>
         <Outlet />
       </AppSidebarLayout>
