@@ -1,10 +1,12 @@
 /**
- * The `/transcript` viewer: the whole conversation in a read-only vim buffer.
+ * The `/transcript` viewer: the whole conversation as a vim scratch buffer.
  *
  * The chat view renders messages as rich components, which is right for
  * reading but awkward for lifting text out of. This is the same content as
- * markdown in an editor, so the usual motions, visual selection, and search
- * work on it — and `y` puts the selection on the system clipboard.
+ * markdown in an editor — a *normal* buffer, not a locked one, so every motion,
+ * operator, and register works. Edits are local scratch: nothing here is ever
+ * written back to the thread, and `:w` is harmless because this vim has no
+ * file to save to. Escape closes the viewer.
  */
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
@@ -85,13 +87,6 @@ export function TranscriptViewDialog({
             syntaxHighlighting(transcriptHighlightStyle),
             EditorView.lineWrapping,
             transcriptTheme,
-            // Both are needed. `readOnly` stops commands from editing, but
-            // text can still arrive through the DOM — paste, IME, native
-            // insertion — so the content element has to be non-editable too.
-            // Keymaps and selection keep working either way, which is what
-            // makes the motions usable.
-            EditorState.readOnly.of(true),
-            EditorView.editable.of(false),
           ],
         }),
       });
@@ -107,7 +102,8 @@ export function TranscriptViewDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>
-            Read-only vim buffer. Motions, visual selection, and `/` search all work; `y` copies.
+            A scratch vim buffer of this conversation. Every motion and operator works; edits stay
+            here and never reach the thread. Escape closes.
           </DialogDescription>
         </DialogHeader>
         <div ref={attachEditor} className="max-h-[70vh] overflow-auto px-6 pb-6" />

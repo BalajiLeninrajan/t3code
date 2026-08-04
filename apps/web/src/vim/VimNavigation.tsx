@@ -119,9 +119,13 @@ const ALWAYS_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   "<C-l>",
 ]);
 
-/** Whether the CodeMirror composer currently holds the keyboard. */
+/**
+ * Whether a CodeMirror editor holds the keyboard — the composer, or the
+ * transcript buffer inside its dialog. Any of them runs its own vim, so the
+ * app hands the keys straight over.
+ */
 function isCodeMirrorFocused(): boolean {
-  return document.activeElement?.closest("[data-vim-codemirror]") != null;
+  return document.activeElement?.closest(".cm-editor") != null;
 }
 
 /** Motions that also mean something inside a card grid. */
@@ -329,10 +333,19 @@ export function VimNavigation() {
       const { pending, setPending, clearPending } = useVimStateStore.getState();
       const key = vimKeyFromEvent(event);
 
+      // A CodeMirror editor is checked before overlays: the transcript buffer
+      // lives inside a dialog, and the dropdown handling below would otherwise
+      // eat its motions — j/k became arrow keys and h/l went nowhere.
+      const codeMirrorMode = isCodeMirrorFocused() ? useVimStateStore.getState().mode : null;
+      if (codeMirrorMode !== null && pending.length === 0) {
+        const appOwnsKey = codeMirrorMode !== "insert" && ALWAYS_GLOBAL_KEYS.has(key ?? "");
+        if (!appOwnsKey) return;
+      }
+
       // Overlays own the keyboard, but a vim user still expects to move
       // through them without arrow keys. This runs before the mode split
       // because most of these overlays keep a text input focused.
-      if (key !== null && isFocusInFloatingLayer()) {
+      if (key !== null && codeMirrorMode === null && isFocusInFloatingLayer()) {
         const claim = () => {
           event.preventDefault();
           event.stopPropagation();
@@ -391,20 +404,6 @@ export function VimNavigation() {
         }
         // Everything else in an overlay belongs to the overlay.
         return;
-      }
-
-      // CodeMirror owns the composer, vim and all. A handful of app-wide keys
-      // are taken back from it so the leader still works with the caret in
-      // there — but only outside insert mode. Claiming them unconditionally
-      // meant <Space> and : could never be typed into a message at all.
-      const codeMirrorMode = isCodeMirrorFocused() ? useVimStateStore.getState().mode : null;
-      // Once a sequence is part-typed the app owns every key until it resolves
-      // or is cancelled — which-key is modal. Handing the second key back to
-      // the editor stranded the popup with no way to dismiss it, and made every
-      // leader binding past its first key unreachable inside the composer.
-      if (codeMirrorMode !== null && pending.length === 0) {
-        const appOwnsKey = codeMirrorMode !== "insert" && ALWAYS_GLOBAL_KEYS.has(key ?? "");
-        if (!appOwnsKey) return;
       }
 
       // Inside CodeMirror the mode comes from the editor itself, which reports
