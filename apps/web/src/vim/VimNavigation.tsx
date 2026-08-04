@@ -62,6 +62,33 @@ const FLOATING_LAYER_ARROWS: Readonly<Record<string, "ArrowDown" | "ArrowUp" | u
   "<C-k>": "ArrowUp",
 };
 
+/** How an open overlay marks the option matching its current value. */
+const SELECTED_ITEM_SELECTOR = [
+  '[role="option"][aria-selected="true"]',
+  '[role="menuitemradio"][aria-checked="true"]',
+  '[role="menuitemcheckbox"][aria-checked="true"]',
+  "[data-selected]",
+  "[data-checked]",
+].join(",");
+
+/**
+ * Menus open with the highlight on the first option rather than the one
+ * currently in effect, so the first ⌃n would step off the top of the list
+ * instead of away from the current value. Move to the selected option first,
+ * once, and let the arrow press go from there.
+ */
+function alignOverlayHighlightToSelection(): void {
+  const active = document.activeElement;
+  const overlay = active?.closest('[data-slot$="-popup"], [data-command-palette]');
+  if (!overlay) return;
+  // Only when the highlight has not moved yet — otherwise this would drag the
+  // cursor back to the selected item on every keystroke.
+  if (active?.matches(SELECTED_ITEM_SELECTOR)) return;
+  const selected = overlay.querySelector<HTMLElement>(SELECTED_ITEM_SELECTOR);
+  if (!selected || selected.contains(active)) return;
+  selected.focus({ preventScroll: false });
+}
+
 /** Replay as a real arrow press so the overlay's own keyboard handling runs. */
 function pressArrowKey(key: "ArrowDown" | "ArrowUp"): void {
   const target = document.activeElement ?? document.body;
@@ -343,12 +370,14 @@ export function VimNavigation() {
         const arrow = FLOATING_LAYER_ARROWS[key];
         if (arrow) {
           claim();
+          alignOverlayHighlightToSelection();
           pressArrowKey(arrow);
           return;
         }
         // j/k too, but only where they cannot be mistaken for typing.
         if ((key === "j" || key === "k") && !isEditableElement(document.activeElement)) {
           claim();
+          alignOverlayHighlightToSelection();
           pressArrowKey(key === "j" ? "ArrowDown" : "ArrowUp");
           return;
         }

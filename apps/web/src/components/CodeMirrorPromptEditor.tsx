@@ -108,6 +108,26 @@ const editorTheme = EditorView.theme({
   ".cm-composer-chip": { display: "inline-flex", verticalAlign: "middle", lineHeight: "1" },
 });
 
+/**
+ * Keys the composer's trigger menu answers to.
+ *
+ * The `@` / `/` menu is anchored to the composer but never takes focus, so the
+ * app's dropdown handling — which keys off focus being inside an overlay —
+ * cannot see it. Readline movement is mapped here instead, where the keystroke
+ * actually arrives.
+ */
+function composerCommandKey(
+  event: KeyboardEvent,
+): "ArrowDown" | "ArrowUp" | "Enter" | "Tab" | null {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") return event.key;
+  if (event.key === "Enter" || event.key === "Tab") return event.key;
+  if (!event.ctrlKey || event.metaKey || event.altKey) return null;
+  const lowered = event.key.toLowerCase();
+  if (lowered === "n" || lowered === "j") return "ArrowDown";
+  if (lowered === "p" || lowered === "k") return "ArrowUp";
+  return null;
+}
+
 /** Hybrid `number` + `relativenumber`: the cursor's line shows its own number. */
 function relativeLineNumbers(): Extension {
   return lineNumbers({
@@ -164,15 +184,15 @@ export function CodeMirrorPromptEditor({
     const host = hostRef.current;
     if (!host) return;
 
-    // The composer owns these four: they drive the trigger menu and send.
-    // Highest precedence so they are decided before vim sees them.
+    // The composer owns these: they drive the trigger menu and send. Highest
+    // precedence so they are decided before vim sees them. The composer only
+    // claims them while its menu is open, so anything else still reaches the
+    // editor.
     const commandKeys = Prec.highest(
       EditorView.domEventHandlers({
         keydown: (event) => {
-          const key = event.key;
-          if (key !== "ArrowDown" && key !== "ArrowUp" && key !== "Enter" && key !== "Tab") {
-            return false;
-          }
+          const key = composerCommandKey(event);
+          if (!key) return false;
           const handled = latest.current.onCommandKeyDown?.(key, event) ?? false;
           if (handled) event.preventDefault();
           return handled;
