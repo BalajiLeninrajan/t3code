@@ -21,6 +21,7 @@ import { EditorId } from "./editor.ts";
 import { ModelCapabilities } from "./model.ts";
 import { ProviderDriverKind, ProviderInstanceId } from "./providerInstance.ts";
 import { ServerSettings } from "./settings.ts";
+import { TerminalHostAppearance } from "./terminal.ts";
 
 const KeybindingsMalformedConfigIssue = Schema.Struct({
   kind: Schema.Literal("keybindings.malformed-config"),
@@ -430,6 +431,8 @@ export const ServerConfig = Schema.Struct({
   availableEditors: ForwardCompatibleArray(EditorId),
   observability: ServerObservability,
   settings: ServerSettings,
+  /** Host terminal appearance; absent when the host has no readable Ghostty config. */
+  terminalAppearance: Schema.optionalKey(TerminalHostAppearance),
   /** Whether shell subscriptions can emit an opt-in catch-up completion marker. */
   shellResumeCompletionMarker: Schema.optionalKey(Schema.Boolean),
   /** Whether thread subscriptions can emit an opt-in catch-up completion marker. */

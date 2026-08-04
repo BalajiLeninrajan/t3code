@@ -12,6 +12,12 @@ import {
   terminalGridSize,
   type GhosttyCellMetrics,
 } from "./renderer";
+import {
+  GhosttyShaderPipeline,
+  ghosttyShaderCursorRect,
+  type GhosttyShaderCursorRect,
+  type GhosttyShaderSource,
+} from "./shader";
 import symbolsFontUrl from "./fonts/SymbolsNerdFontMono-Regular.woff2?url";
 
 export const DEFAULT_TERMINAL_FONT_SIZE = 12;
@@ -39,6 +45,39 @@ const CURSOR_BLINK_INTERVAL_MS = 500;
 export interface GhosttyTerminalFont {
   readonly family?: string;
   readonly size?: number;
+}
+
+/**
+ * Ghostty's `custom-shader-animation`: never animate, animate while the surface
+ * is focused, or animate whenever it is on screen.
+ */
+export type GhosttyShaderAnimation = "false" | "true" | "always";
+
+export interface GhosttyTerminalShaders {
+  readonly sources: readonly GhosttyShaderSource[];
+  readonly animation: GhosttyShaderAnimation;
+}
+
+/** The cursor rectangle the shader chain sees, in CSS pixels of the mount. */
+export function terminalCursorBox(input: {
+  readonly cursorX: number;
+  readonly cursorY: number;
+  readonly cursorStyle: number;
+  readonly metrics: GhosttyCellMetrics;
+  readonly padding: number;
+  readonly originY: number;
+}): { left: number; top: number; width: number; height: number } {
+  const left = input.padding + input.cursorX * input.metrics.width;
+  const top = input.originY + input.cursorY * input.metrics.height;
+  // Matches what the renderer actually paints, so cursor-trail shaders chase
+  // the same shape the user sees rather than always a full cell.
+  if (input.cursorStyle === 0) {
+    return { left, top, width: 2, height: input.metrics.height };
+  }
+  if (input.cursorStyle === 2) {
+    return { left, top: top + input.metrics.height - 2, width: input.metrics.width, height: 2 };
+  }
+  return { left, top, width: input.metrics.width, height: input.metrics.height };
 }
 
 let symbolsFontLoad: Promise<void> | null = null;
@@ -329,6 +368,7 @@ export interface GhosttySelectionPosition {
 export interface GhosttyTerminalSurfaceOptions {
   readonly theme: GhosttyTheme;
   readonly font?: GhosttyTerminalFont;
+  readonly shaders?: GhosttyTerminalShaders;
   readonly onData: (data: string) => void;
   readonly onResize: (cols: number, rows: number) => void;
   readonly onSelectionChange: () => void;
@@ -402,6 +442,15 @@ export class GhosttyTerminalSurface {
   private readonly reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   private inputLeft = -1;
   private inputTop = -1;
+  private shaderCanvas: HTMLCanvasElement | null = null;
+  private shaderPipeline: GhosttyShaderPipeline | null = null;
+  private shaderAnimation: GhosttyShaderAnimation = "true";
+  private shaderFrame = 0;
+  private shaderCursor: GhosttyShaderCursorRect | null = null;
+  private shaderPreviousCursor: GhosttyShaderCursorRect | null = null;
+  private shaderCursorChangedAtMs = 0;
+  private shaderCursorColor: readonly [number, number, number, number] = [1, 1, 1, 1];
+  private shaderPreviousCursorColor: readonly [number, number, number, number] = [1, 1, 1, 1];
 
   private constructor(
     mount: HTMLElement,
@@ -497,9 +546,50 @@ export class GhosttyTerminalSurface {
       metrics,
       options,
     );
+    if (options.shaders) surface.setShaders(options.shaders);
     surface.fit();
     surface.requestRender();
     return surface;
+  }
+
+  /**
+   * Install the host's `custom-shader` chain, or drop it when the list is empty.
+   * The shader output is an opaque overlay above the Canvas 2D grid, so hit
+   * testing, IME positioning, and the scrollbar keep working untouched.
+   */
+  setShaders(shaders: GhosttyTerminalShaders): void {
+    if (this.disposed) return;
+    this.shaderAnimation = shaders.animation;
+    this.disposeShaderPipeline();
+    if (shaders.sources.length === 0) {
+      this.shaderCanvas?.remove();
+      this.shaderCanvas = null;
+      this.forceFullRender = true;
+      this.requestRender();
+      return;
+    }
+    if (!this.shaderCanvas) {
+      const shaderCanvas = document.createElement("canvas");
+      shaderCanvas.className = "t3-ghostty-shader-canvas";
+      shaderCanvas.setAttribute("aria-hidden", "true");
+      shaderCanvas.style.cssText =
+        "position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none;";
+      this.canvas.after(shaderCanvas);
+      this.shaderCanvas = shaderCanvas;
+    }
+    this.shaderPipeline = GhosttyShaderPipeline.create(
+      this.shaderCanvas,
+      shaders.sources,
+      performance.now(),
+    );
+    if (!this.shaderPipeline) {
+      // A shader that will not compile must not leave a blank canvas covering
+      // the terminal it was supposed to decorate.
+      this.shaderCanvas.remove();
+      this.shaderCanvas = null;
+    }
+    this.forceFullRender = true;
+    this.requestRender();
   }
 
   write(data: string): void {
@@ -721,6 +811,7 @@ export class GhosttyTerminalSurface {
       this.options.onResize(this.cols, this.rows);
     }
     if (this.frame !== 0) window.cancelAnimationFrame(this.frame);
+    this.disposeShaderPipeline();
     if (this.cursorTimer !== null) window.clearTimeout(this.cursorTimer);
     if (this.compositionSuppressionTimer !== null) {
       window.clearTimeout(this.compositionSuppressionTimer);
@@ -733,9 +824,11 @@ export class GhosttyTerminalSurface {
       this.scrollbar.parentElement === this.mount
     ) {
       this.canvas.remove();
+      this.shaderCanvas?.remove();
       this.input.remove();
       this.scrollbar.remove();
     }
+    this.shaderCanvas = null;
   }
 
   private readonly onKeyDown = (event: KeyboardEvent) => {
@@ -1317,6 +1410,7 @@ export class GhosttyTerminalSurface {
       ...(this.theme.selectionBackground !== undefined
         ? { selectionBackground: this.theme.selectionBackground }
         : {}),
+      ...(this.theme.cursorText !== undefined ? { cursorText: this.theme.cursorText } : {}),
     });
     this.positionInput();
     this.renderedCursorY =
@@ -1328,7 +1422,102 @@ export class GhosttyTerminalSurface {
       this.updateScrollbar();
     }
     this.forceFullRender = false;
+    this.trackShaderCursor();
+    this.renderShaderFrame(true);
     this.scheduleCursorBlink();
+  }
+
+  /**
+   * Feed the shader chain the cursor rectangles it animates between. A move is
+   * only recorded when the rectangle actually changes, so `iTimeCursorChange`
+   * marks the moment the cursor jumped rather than the last repaint.
+   */
+  private trackShaderCursor(): void {
+    if (!this.shaderPipeline) return;
+    const snapshot = this.snapshot;
+    if (!snapshot || !snapshot.cursorVisible || snapshot.cursorX < 0 || snapshot.cursorY < 0) {
+      return;
+    }
+    const box = terminalCursorBox({
+      cursorX: snapshot.cursorX,
+      cursorY: snapshot.cursorY,
+      cursorStyle: snapshot.cursorStyle,
+      metrics: this.metrics,
+      padding: CONTENT_PADDING,
+      originY: this.originY,
+    });
+    const rect = ghosttyShaderCursorRect({
+      ...box,
+      canvasHeight: this.canvas.height,
+      scale: window.devicePixelRatio || 1,
+    });
+    const previous = this.shaderCursor;
+    const color = [
+      snapshot.cursor.r / 255,
+      snapshot.cursor.g / 255,
+      snapshot.cursor.b / 255,
+      1,
+    ] as const;
+    if (
+      previous !== null &&
+      previous.x === rect.x &&
+      previous.y === rect.y &&
+      previous.width === rect.width &&
+      previous.height === rect.height
+    ) {
+      this.shaderCursorColor = color;
+      return;
+    }
+    this.shaderPreviousCursor = previous ?? rect;
+    this.shaderPreviousCursorColor = this.shaderCursorColor;
+    this.shaderCursor = rect;
+    this.shaderCursorColor = color;
+    this.shaderCursorChangedAtMs = performance.now();
+  }
+
+  private renderShaderFrame(sourceChanged: boolean): void {
+    const pipeline = this.shaderPipeline;
+    if (this.disposed || !pipeline) return;
+    if (this.shaderFrame !== 0) {
+      window.cancelAnimationFrame(this.shaderFrame);
+      this.shaderFrame = 0;
+    }
+    const cursor = this.shaderCursor ?? { x: 0, y: 0, width: 0, height: 0 };
+    pipeline.render(this.canvas, {
+      timeMs: performance.now(),
+      sourceChanged,
+      cursor,
+      previousCursor: this.shaderPreviousCursor ?? cursor,
+      cursorChangedAtMs: this.shaderCursorChangedAtMs,
+      cursorColor: this.shaderCursorColor,
+      previousCursorColor: this.shaderPreviousCursorColor,
+    });
+    this.scheduleShaderFrame();
+  }
+
+  /**
+   * Shaders are time-driven, so they need frames the terminal itself does not
+   * ask for. Animation stays off unless Ghostty's own setting asks for it, and
+   * the focused-only default keeps idle terminals from repainting forever.
+   */
+  private scheduleShaderFrame(): void {
+    if (this.disposed || !this.shaderPipeline || this.shaderFrame !== 0) return;
+    if (this.shaderAnimation === "false") return;
+    if (this.shaderAnimation === "true" && !this.focused) return;
+    if (this.reducedMotionMedia?.matches) return;
+    this.shaderFrame = window.requestAnimationFrame(() => {
+      this.shaderFrame = 0;
+      this.renderShaderFrame(false);
+    });
+  }
+
+  private disposeShaderPipeline(): void {
+    if (this.shaderFrame !== 0) {
+      window.cancelAnimationFrame(this.shaderFrame);
+      this.shaderFrame = 0;
+    }
+    this.shaderPipeline?.dispose();
+    this.shaderPipeline = null;
   }
 
   private scheduleCursorBlink(): void {

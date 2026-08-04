@@ -90,6 +90,46 @@ export const TerminalCloseInput = Schema.Struct({
 });
 export type TerminalCloseInput = typeof TerminalCloseInput.Type;
 
+const TerminalHexColor = Schema.String.check(Schema.isPattern(/^#[0-9a-fA-F]{6}$/));
+
+/** Colors read from the host's terminal config, already resolved past any theme. */
+export const TerminalHostColors = Schema.Struct({
+  background: TerminalHexColor,
+  foreground: TerminalHexColor,
+  cursor: Schema.optionalKey(TerminalHexColor),
+  cursorText: Schema.optionalKey(TerminalHexColor),
+  selectionBackground: Schema.optionalKey(TerminalHexColor),
+  /** Indexed colors starting at 0; a short array leaves the rest at the defaults. */
+  palette: Schema.Array(TerminalHexColor).check(Schema.isMaxLength(256)),
+});
+export type TerminalHostColors = typeof TerminalHostColors.Type;
+
+/** One `custom-shader` entry, shipped with its source so clients need no host filesystem. */
+export const TerminalHostShader = Schema.Struct({
+  path: TrimmedNonEmptyStringSchema,
+  source: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(262_144)),
+});
+export type TerminalHostShader = typeof TerminalHostShader.Type;
+
+/** Ghostty's `custom-shader-animation`: never, while focused, or always. */
+export const TerminalHostShaderAnimation = Schema.Literals(["false", "true", "always"]);
+export type TerminalHostShaderAnimation = typeof TerminalHostShaderAnimation.Type;
+
+/**
+ * The terminal appearance of the machine running the server, resolved from the
+ * host's Ghostty config so in-app terminals look like the user's own terminal.
+ * Absent when the host has no readable Ghostty config.
+ */
+export const TerminalHostAppearance = Schema.Struct({
+  colors: Schema.optionalKey(TerminalHostColors),
+  /** CSS font list, most preferred first. */
+  fontFamilies: Schema.Array(TrimmedNonEmptyStringSchema).check(Schema.isMaxLength(16)),
+  fontSize: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThan(0))),
+  shaders: Schema.Array(TerminalHostShader).check(Schema.isMaxLength(8)),
+  shaderAnimation: TerminalHostShaderAnimation,
+});
+export type TerminalHostAppearance = typeof TerminalHostAppearance.Type;
+
 export const TerminalSessionStatus = Schema.Literals(["starting", "running", "exited", "error"]);
 export type TerminalSessionStatus = typeof TerminalSessionStatus.Type;
 

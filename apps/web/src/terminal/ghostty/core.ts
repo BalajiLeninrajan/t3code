@@ -13,6 +13,10 @@ const MAX_SCROLLBACK_ROWS = 10_000;
 // wasm32 C ABI layout for GhosttyTerminalSelectionFormatOptions at the
 // libghostty-vt revision pinned alongside this module.
 const SELECTION_FORMAT_OPTIONS_SIZE = 16;
+const PALETTE_ENTRY_COUNT = 256;
+/** GHOSTTY_TERMINAL_OPT_COLOR_PALETTE and its default-palette data counterpart. */
+const TERMINAL_OPT_COLOR_PALETTE = 14;
+const TERMINAL_DATA_COLOR_PALETTE_DEFAULT = 25;
 
 const RENDER_DATA = {
   cols: 1,
@@ -70,6 +74,10 @@ export interface GhosttyTheme {
   readonly cursor: GhosttyColor;
   /** CSS color the renderer overlays on selected cells; not sent to Ghostty. */
   readonly selectionBackground?: string;
+  /** CSS color for text under a block cursor; not sent to Ghostty. */
+  readonly cursorText?: string;
+  /** Indexed colors starting at 0; entries past the end keep Ghostty's defaults. */
+  readonly palette?: readonly GhosttyColor[];
 }
 
 export interface GhosttyCell {
@@ -364,6 +372,36 @@ export class GhosttyTerminalCore {
       this.runtime.call("ghostty_terminal_set", this.terminal, option, color);
     }
     this.runtime.free(color, 3);
+    this.setPalette(theme.palette);
+  }
+
+  /**
+   * Ghostty takes the whole 256-entry palette at once, so a theme that only
+   * names the first sixteen colors is layered over the built-in defaults.
+   */
+  private setPalette(palette: readonly GhosttyColor[] | undefined): void {
+    if (!palette || palette.length === 0) return;
+    const size = PALETTE_ENTRY_COUNT * 3;
+    const buffer = this.runtime.alloc(size);
+    try {
+      // Data kind 25 is the default palette, i.e. the entries an OSC override
+      // would fall back to, which is exactly what unnamed indices should keep.
+      const defaults = this.runtime.call(
+        "ghostty_terminal_get",
+        this.terminal,
+        TERMINAL_DATA_COLOR_PALETTE_DEFAULT,
+        buffer,
+      );
+      if (defaults !== GHOSTTY_SUCCESS) return;
+      const bytes = this.runtime.bytes(buffer, size);
+      for (let index = 0; index < Math.min(palette.length, PALETTE_ENTRY_COUNT); index += 1) {
+        const entry = palette[index]!;
+        bytes.set([entry.r, entry.g, entry.b], index * 3);
+      }
+      this.runtime.call("ghostty_terminal_set", this.terminal, TERMINAL_OPT_COLOR_PALETTE, buffer);
+    } finally {
+      this.runtime.free(buffer, size);
+    }
   }
 
   scroll(deltaRows: number): void {
