@@ -47,7 +47,6 @@ import {
   isFocusInFloatingLayer,
   modeForActiveElement,
   useVimStateStore,
-  type VimMode,
 } from "./vimState";
 
 /** A bare `j` scrolls about three text lines, which reads as one "step". */
@@ -62,6 +61,41 @@ const FLOATING_LAYER_ARROWS: Readonly<Record<string, "ArrowDown" | "ArrowUp" | u
   "<C-p>": "ArrowUp",
   "<C-k>": "ArrowUp",
 };
+
+/** How an open overlay marks the option matching its current value. */
+const SELECTED_ITEM_SELECTOR = [
+  '[role="option"][aria-selected="true"]',
+  '[role="menuitemradio"][aria-checked="true"]',
+  '[role="menuitemcheckbox"][aria-checked="true"]',
+  "[data-selected]",
+  "[data-checked]",
+].join(",");
+
+/**
+ * Overlays already aligned since they opened. Each opening is a fresh element,
+ * so this resets naturally and never needs clearing.
+ */
+const alignedOverlays = new WeakSet<Element>();
+
+/**
+ * Menus open with the highlight on the first option rather than the one
+ * currently in effect, so the first ⌃n would step off the top of the list
+ * instead of away from the current value. Move to the selected option, then
+ * never again for this opening — realigning on every keystroke would drag the
+ * highlight back and cap movement at one step either side.
+ */
+function alignOverlayHighlightToSelection(): void {
+  const active = document.activeElement;
+  const overlay = active?.closest('[data-slot$="-popup"], [data-command-palette]');
+  if (!overlay || alignedOverlays.has(overlay)) return;
+  alignedOverlays.add(overlay);
+
+  // Overlays that keep focus on an input and track the highlight virtually
+  // have no option to move focus to; leave those to their own handling.
+  const selected = overlay.querySelector<HTMLElement>(SELECTED_ITEM_SELECTOR);
+  if (!selected || selected.contains(active)) return;
+  selected.focus({ preventScroll: false });
+}
 
 /** Replay as a real arrow press so the overlay's own keyboard handling runs. */
 function pressArrowKey(key: "ArrowDown" | "ArrowUp"): void {
@@ -84,24 +118,6 @@ const ALWAYS_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   "<C-k>",
   "<C-l>",
 ]);
-
-/** Whether the CodeMirror composer currently holds the keyboard. */
-function isCodeMirrorFocused(): boolean {
-  return document.activeElement?.closest("[data-vim-codemirror]") != null;
-}
-
-/**
- * CodeMirror's vim mode, read off the DOM class it already sets, so the app's
- * indicator agrees with the editor without subscribing to its internals.
- */
-function codeMirrorVimMode(): VimMode {
-  const host = document.activeElement?.closest("[data-vim-codemirror]");
-  const panel = host?.querySelector(".cm-vim-panel");
-  const text = panel?.textContent?.toLowerCase() ?? "";
-  if (text.includes("insert")) return "insert";
-  if (text.includes("visual")) return "visual";
-  return host?.querySelector(".cm-fat-cursor") ? "normal" : "insert";
-}
 
 /** Motions that also mean something inside a card grid. */
 const GRID_DIRECTIONS: Partial<Record<VimMotion, "left" | "right" | "up" | "down">> = {
@@ -265,9 +281,7 @@ export function VimNavigation() {
         focusRegion(useVimStateStore.getState().region);
       }
 
-      // CodeMirror runs its own vim, so while it holds the keyboard the mode
-      // shown is whatever it reports; elsewhere the mode follows focus.
-      setMode(isCodeMirrorFocused() ? codeMirrorVimMode() : modeForActiveElement());
+      setMode(modeForActiveElement());
       const region = regionForElement(document.activeElement);
       if (region) setRegion(region);
     };
@@ -302,6 +316,12 @@ export function VimNavigation() {
       ) {
         return;
       }
+
+      // A focused terminal owns every key. Whatever is running in it — a
+      // shell, or the editor the composer opened — has its own idea of what
+      // Escape and `:` mean, and both are keys it cannot do without. Getting
+      // out is a deliberate chord, handled by the keybinding layer, not here.
+      if (isTerminalFocused()) return;
 
       const { pending, setPending, clearPending } = useVimStateStore.getState();
       const key = vimKeyFromEvent(event);
@@ -355,12 +375,14 @@ export function VimNavigation() {
         const arrow = FLOATING_LAYER_ARROWS[key];
         if (arrow) {
           claim();
+          alignOverlayHighlightToSelection();
           pressArrowKey(arrow);
           return;
         }
         // j/k too, but only where they cannot be mistaken for typing.
         if ((key === "j" || key === "k") && !isEditableElement(document.activeElement)) {
           claim();
+          alignOverlayHighlightToSelection();
           pressArrowKey(key === "j" ? "ArrowDown" : "ArrowUp");
           return;
         }
@@ -368,22 +390,12 @@ export function VimNavigation() {
         return;
       }
 
-      // CodeMirror owns the composer, vim and all. Only the app-wide keys are
-      // taken back from it, so the leader still works with the caret in there.
-      if (isCodeMirrorFocused() && !ALWAYS_GLOBAL_KEYS.has(key ?? "")) {
-        return;
-      }
-
-      // Focus alone cannot answer "what mode is this?" for the composer: it is
-      // a text field either way, so reading the DOM would call composer-normal
-      // "insert" and let the leader type a space instead of opening which-key.
-      const activeMode = isCodeMirrorFocused() ? "normal" : modeForActiveElement();
+      const activeMode = modeForActiveElement();
 
       if (activeMode === "insert") {
-        // Escape (and vim's ⌃[) leaves any other text field outright — only the
-        // composer is a buffer. The terminal keeps its own Escape, which
-        // belongs to whatever is running in the shell.
-        if (key !== "<Esc>" || isTerminalFocused()) return;
+        // Escape (and vim's ⌃[) leaves a text field outright. A focused
+        // terminal never reaches here — it returned above with every key.
+        if (key !== "<Esc>") return;
         const active = document.activeElement;
         if (!(active instanceof HTMLElement)) return;
         event.preventDefault();
@@ -397,6 +409,16 @@ export function VimNavigation() {
       }
 
       if (key === null) return;
+
+      if (key === "<BS>") {
+        // Backspace steps back one level of the sequence, as which-key does.
+        // With nothing pending it is just a backspace.
+        if (pending.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setPending(pending.slice(0, -1));
+        return;
+      }
 
       if (key === "<Esc>") {
         // Only claim Escape when it has a sequence to cancel; otherwise it

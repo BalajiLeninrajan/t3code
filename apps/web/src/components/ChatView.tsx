@@ -143,7 +143,7 @@ import { DiffWorkerPoolProvider } from "./DiffWorkerPoolProvider";
 import { BranchToolbar } from "./BranchToolbar";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import PlanSidebar from "./PlanSidebar";
-import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
+import ThreadTerminalDrawer, { TerminalViewport } from "./ThreadTerminalDrawer";
 import {
   AlarmClockIcon,
   CheckCircle2Icon,
@@ -222,7 +222,10 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
+import type { EditorSessionKind } from "./chat/composerEditorSession";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
+import { buildTranscriptMarkdown } from "./chat/transcriptText";
+import { useComposerEditorSession } from "./chat/useComposerEditorSession";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import { MessagesTimeline } from "./chat/MessagesTimeline";
@@ -461,6 +464,21 @@ function formatOutgoingPrompt(params: {
   const promptEffort = resolvePromptInjectedEffort(caps, params.effort);
   return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
+/**
+ * How much of the window the composer takes while an editor session owns it.
+ * A full-screen editor wants room; a transcript is there to be read and
+ * scrolled through, so it gets more of it.
+ */
+const COMPOSER_EDITOR_VIEWPORT_FRACTION = 0.6;
+const TRANSCRIPT_EDITOR_VIEWPORT_FRACTION = 0.75;
+/** Below this the editor stops being usable, whatever the window is doing. */
+const MIN_COMPOSER_EDITOR_SURFACE_HEIGHT = 240;
+/**
+ * How wide each kind gets. A prompt is still prose and reads badly in very long
+ * lines; a transcript is a document, and wants the room.
+ */
+const COMPOSER_EDITOR_MAX_WIDTH = "1040px";
+const TRANSCRIPT_EDITOR_MAX_WIDTH = "1600px";
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -2794,49 +2812,52 @@ function ChatViewContent(props: ChatViewProps) {
       writeTerminal,
     ],
   );
-  const runProjectScript = useCallback(
-    async (
-      script: ProjectScript,
-      options?: {
-        cwd?: string;
-        env?: Record<string, string>;
-        worktreePath?: string | null;
-        preferNewTerminal?: boolean;
-        rememberAsLastInvoked?: boolean;
-      },
-    ) => {
-      if (!activeThreadId || !activeProject || !activeThread) return;
-      if (options?.rememberAsLastInvoked !== false) {
-        setLastInvokedScriptByProjectId((current) => {
-          if (current[activeProject.id] === script.id) return current;
-          return { ...current, [activeProject.id]: script.id };
-        });
-      }
-      const targetCwd = options?.cwd ?? gitCwd ?? activeProject.workspaceRoot;
+  /**
+   * Open a thread terminal and run one command in it, resolving with the id of
+   * the terminal it landed in. Project scripts and the composer's open-in-editor
+   * flow both need exactly this, and the editor flow needs the id back so it can
+   * watch that terminal for the editor exiting.
+   */
+  const runTerminalCommand = useCallback(
+    async (input: {
+      command: string;
+      errorLabel: string;
+      cwd?: string;
+      env?: Record<string, string>;
+      worktreePath?: string | null;
+      preferNewTerminal?: boolean;
+      /**
+       * Opening the drawer is right for a script you want to watch, and wrong
+       * for the composer's editor, which renders its own terminal in place of
+       * the prompt box — two surfaces on one PTY fight over size and focus.
+       */
+      openDrawer?: boolean;
+    }): Promise<string | null> => {
+      if (!activeThreadId || !activeProject || !activeThread) return null;
+      const targetCwd = input.cwd ?? gitCwd ?? activeProject.workspaceRoot;
       const baseTerminalId =
         terminalUiState.activeTerminalId || activeKnownTerminalIds[0] || DEFAULT_THREAD_TERMINAL_ID;
       const isBaseTerminalBusy = runningTerminalIds.includes(baseTerminalId);
-      const wantsNewTerminal = Boolean(options?.preferNewTerminal) || isBaseTerminalBusy;
-      const shouldCreateNewTerminal = wantsNewTerminal;
-      const targetWorktreePath = options?.worktreePath ?? activeThread.worktreePath ?? null;
+      const shouldCreateNewTerminal = Boolean(input.preferNewTerminal) || isBaseTerminalBusy;
+      const targetWorktreePath = input.worktreePath ?? activeThread.worktreePath ?? null;
 
       setTerminalUiLaunchContext({
         threadId: activeThreadId,
         cwd: targetCwd,
         worktreePath: targetWorktreePath,
       });
-      setTerminalOpen(true);
+      if (input.openDrawer !== false) setTerminalOpen(true);
       if (!activeThreadRef) {
-        return;
+        return null;
       }
-      setTerminalFocusRequestId((value) => value + 1);
+      if (input.openDrawer !== false) setTerminalFocusRequestId((value) => value + 1);
 
       const runtimeEnv = projectScriptRuntimeEnv({
         project: {
           cwd: activeProject.workspaceRoot,
         },
         worktreePath: targetWorktreePath,
-        ...(options?.env ? { extraEnv: options.env } : {}),
+        ...(input.env ? { extraEnv: input.env } : {}),
       });
       const targetTerminalId = shouldCreateNewTerminal
         ? nextTerminalId(allocatableActiveTerminalIds)
@@ -2859,7 +2880,12 @@ function ChatViewContent(props: ChatViewProps) {
             env: runtimeEnv,
           };
 
-      if (shouldCreateNewTerminal) {
+      if (input.openDrawer === false) {
+        // Registered so the id is never handed out twice, but neither shown nor
+        // made active: the caller renders this terminal somewhere else, and two
+        // Ghostty surfaces on one PTY fight over size and focus.
+        storeEnsureTerminal(activeThreadRef, targetTerminalId, { active: false });
+      } else if (shouldCreateNewTerminal) {
         storeNewTerminal(activeThreadRef, targetTerminalId);
       } else {
         storeSetActiveTerminal(activeThreadRef, targetTerminalId);
@@ -2869,12 +2895,9 @@ function ChatViewContent(props: ChatViewProps) {
       if (openResult._tag === "Failure") {
         if (!isAtomCommandInterrupted(openResult)) {
           const error = squashAtomCommandFailure(openResult);
-          setThreadError(
-            activeThreadId,
-            error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
-          );
+          setThreadError(activeThreadId, error instanceof Error ? error.message : input.errorLabel);
         }
-        return;
+        return null;
       }
 
       const writeResult = await writeTerminal({
@@ -2882,16 +2905,24 @@ function ChatViewContent(props: ChatViewProps) {
         input: {
           threadId: activeThreadId,
           terminalId: targetTerminalId,
-          data: `${script.command}\r`,
+          data: `${input.command}\r`,
         },
       });
-      if (writeResult._tag === "Failure" && !isAtomCommandInterrupted(writeResult)) {
-        const error = squashAtomCommandFailure(writeResult);
-        setThreadError(
-          activeThreadId,
-          error instanceof Error ? error.message : `Failed to run script "${script.name}".`,
-        );
+      if (writeResult._tag === "Failure") {
+        if (!isAtomCommandInterrupted(writeResult)) {
+          const error = squashAtomCommandFailure(writeResult);
+          setThreadError(activeThreadId, error instanceof Error ? error.message : input.errorLabel);
+        }
+        return null;
       }
+      if (input.openDrawer === false) {
+        // The drawer reconciles its tab list against the server's terminals, so
+        // hiding this one means marking it suppressed — otherwise it reappears
+        // down there the moment the server reports it. UI-only; the session
+        // itself keeps running for whoever is rendering it.
+        storeCloseTerminal(activeThreadRef, targetTerminalId);
+      }
+      return targetTerminalId;
     },
     [
       activeProject,
@@ -2903,9 +2934,10 @@ function ChatViewContent(props: ChatViewProps) {
       setThreadError,
       storeNewTerminal,
       storeSetActiveTerminal,
-      setLastInvokedScriptByProjectId,
       environmentId,
       openTerminal,
+      storeEnsureTerminal,
+      storeCloseTerminal,
       activeKnownTerminalIds,
       allocatableActiveTerminalIds,
       runningTerminalIds,
@@ -2913,6 +2945,151 @@ function ChatViewContent(props: ChatViewProps) {
       writeTerminal,
     ],
   );
+  const runProjectScript = useCallback(
+    async (
+      script: ProjectScript,
+      options?: {
+        cwd?: string;
+        env?: Record<string, string>;
+        worktreePath?: string | null;
+        preferNewTerminal?: boolean;
+        rememberAsLastInvoked?: boolean;
+      },
+    ) => {
+      if (!activeProject) return;
+      if (options?.rememberAsLastInvoked !== false) {
+        setLastInvokedScriptByProjectId((current) => {
+          if (current[activeProject.id] === script.id) return current;
+          return { ...current, [activeProject.id]: script.id };
+        });
+      }
+      await runTerminalCommand({
+        command: script.command,
+        errorLabel: `Failed to run script "${script.name}".`,
+        ...(options?.cwd !== undefined ? { cwd: options.cwd } : {}),
+        ...(options?.env !== undefined ? { env: options.env } : {}),
+        ...(options?.worktreePath !== undefined ? { worktreePath: options.worktreePath } : {}),
+        ...(options?.preferNewTerminal !== undefined
+          ? { preferNewTerminal: options.preferNewTerminal }
+          : {}),
+      });
+    },
+    [activeProject, runTerminalCommand, setLastInvokedScriptByProjectId],
+  );
+
+  const {
+    openInEditor,
+    activeTerminalId: editorTerminalId,
+    activeKind: editorKind,
+  } = useComposerEditorSession({
+    environmentId,
+    runningTerminalIds,
+    runTerminalCommand,
+    onReadBack: (contents) => {
+      setComposerDraftPrompt(composerDraftTarget, contents);
+      composerRef.current?.resetCursorState({ prompt: contents, cursor: contents.length });
+    },
+    onSessionEnded: (terminalId) => {
+      void closeTerminalMutation({
+        environmentId,
+        input: { threadId: activeThreadId as ThreadId, terminalId, deleteHistory: true },
+      });
+    },
+    onError: (message) => {
+      if (activeThreadId) setThreadError(activeThreadId, message);
+    },
+  });
+  /**
+   * The draft goes out as whatever is in the composer right now; the transcript
+   * goes out as the same markdown the in-app viewer used to render.
+   */
+  const openComposerInEditor = useCallback(
+    ({ kind, draft }: { kind: EditorSessionKind; draft: string }) => {
+      openInEditor({
+        kind,
+        contents:
+          kind === "transcript"
+            ? buildTranscriptMarkdown(activeThread?.messages ?? [], {
+                title: activeThread?.title ?? null,
+              })
+            : draft,
+      });
+    },
+    [activeThread?.messages, activeThread?.title, openInEditor],
+  );
+  /** The same env `runTerminalCommand` opens an editor session with. */
+  const composerEditorRuntimeEnv = useMemo(
+    () =>
+      activeProject
+        ? projectScriptRuntimeEnv({
+            project: { cwd: activeProject.workspaceRoot },
+            worktreePath: activeThread?.worktreePath ?? null,
+          })
+        : undefined,
+    [activeProject, activeThread?.worktreePath],
+  );
+  // Bumped per session so the surface fits itself to the composer once it is
+  // actually on screen; a constant here left it measuring a stale size.
+  const [composerEditorSurfaceEpoch, setComposerEditorSurfaceEpoch] = useState(0);
+  useEffect(() => {
+    if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
+  }, [editorTerminalId]);
+  const [windowHeight, setWindowHeight] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerHeight,
+  );
+  useEffect(() => {
+    const onResize = () => setWindowHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  /**
+   * One number drives both the box and the terminal's own fit. They have to
+   * agree — sizing the box in CSS while the surface measured something else is
+   * what made the first version render wrong.
+   */
+  const composerEditorSurfaceHeight = Math.max(
+    MIN_COMPOSER_EDITOR_SURFACE_HEIGHT,
+    Math.round(
+      windowHeight *
+        (editorKind === "transcript"
+          ? TRANSCRIPT_EDITOR_VIEWPORT_FRACTION
+          : COMPOSER_EDITOR_VIEWPORT_FRACTION),
+    ),
+  );
+  const composerEditorSurfaceWidth = `max(100%, min(${
+    editorKind === "transcript" ? TRANSCRIPT_EDITOR_MAX_WIDTH : COMPOSER_EDITOR_MAX_WIDTH
+  }, calc(100vw - 320px)))`;
+  // Re-fit when the window changes size, not just when a session starts.
+  useEffect(() => {
+    if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
+  }, [composerEditorSurfaceHeight, editorTerminalId]);
+  /**
+   * While the editor is open the terminal running it takes the composer's
+   * place, so you write the prompt where the prompt goes rather than in a
+   * drawer somewhere else on screen.
+   */
+  const composerEditorSurface =
+    editorTerminalId !== null && activeThreadRef && activeThreadId && activeProject ? (
+      <TerminalViewport
+        threadRef={activeThreadRef}
+        threadId={activeThreadId}
+        terminalId={editorTerminalId}
+        terminalLabel="editor"
+        cwd={gitCwd ?? activeProject.workspaceRoot}
+        worktreePath={activeThread?.worktreePath ?? null}
+        // Must match the env the session was opened with. Attaching with a
+        // different env is attaching to a differently-shaped session, and the
+        // editor renders against whatever it finds there.
+        {...(composerEditorRuntimeEnv ? { runtimeEnv: composerEditorRuntimeEnv } : {})}
+        onSessionExited={() => {}}
+        onAddTerminalContext={addTerminalContextToDraft}
+        focusRequestId={composerEditorSurfaceEpoch}
+        autoFocus
+        resizeEpoch={composerEditorSurfaceEpoch}
+        drawerHeight={composerEditorSurfaceHeight}
+        keybindings={keybindings}
+      />
+    ) : null;
 
   const persistProjectScripts = useCallback(
     async (input: {
@@ -5919,6 +6096,10 @@ function ChatViewContent(props: ChatViewProps) {
                       <div className="chat-composer-glass-host relative z-10 w-full rounded-[22px]">
                         <div ref={attachDraftHeroComposerAnchorRef} className="relative z-10">
                           <ChatComposer
+                            onOpenInEditor={openComposerInEditor}
+                            editorSurface={composerEditorSurface}
+                            editorSurfaceHeight={composerEditorSurfaceHeight}
+                            editorSurfaceWidth={composerEditorSurfaceWidth}
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}

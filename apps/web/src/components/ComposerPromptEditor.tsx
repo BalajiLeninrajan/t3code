@@ -950,12 +950,29 @@ function ComposerCommandKeyPlugin(props: {
       (event) => handleCommand("Tab", event),
       COMMAND_PRIORITY_HIGH,
     );
+    // `⌃n`/`⌃p` (and `⌃j`/`⌃k`) move through the `/` and `@` suggestion lists,
+    // the way they move through a completion popup in vim. They only claim the
+    // chord while a menu is open: `onCommandKeyDown` reports back whether it
+    // used the key, and an unhandled one falls through to the editor's own
+    // meaning rather than being swallowed.
+    const unregisterMenuChords = editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      (event) => {
+        if (!event.ctrlKey || event.metaKey || event.altKey) return false;
+        const key = event.key.toLowerCase();
+        if (key === "n" || key === "j") return handleCommand("ArrowDown", event);
+        if (key === "p" || key === "k") return handleCommand("ArrowUp", event);
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH,
+    );
 
     return () => {
       unregisterArrowDown();
       unregisterArrowUp();
       unregisterEnter();
       unregisterTab();
+      unregisterMenuChords();
     };
   }, [editor, props]);
 

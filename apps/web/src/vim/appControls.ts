@@ -9,13 +9,14 @@
  * ownership of its own state and keyboard handling.
  */
 
-export type VimControl = "reasoning" | "access" | "planMode" | "gitQuickAction";
+export type VimControl = "reasoning" | "access" | "planMode" | "gitQuickAction" | "composerEditor";
 
 const CONTROL_SELECTORS: Readonly<Record<VimControl, string>> = {
   reasoning: "[data-composer-traits-trigger]",
   access: "[data-composer-runtime-mode-trigger]",
   planMode: "[data-composer-interaction-mode-toggle]",
   gitQuickAction: "[data-git-quick-action]",
+  composerEditor: "[data-composer-editor-trigger]",
 };
 
 export const VIM_CONTROL_SELECTORS = CONTROL_SELECTORS;
