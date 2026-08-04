@@ -51,6 +51,18 @@ export type ComposerCommandItem =
       skill: ServerProviderSkill;
       label: string;
       description: string;
+    }
+  /**
+   * A slash entry that acts on the UI rather than the thread, so it stays out
+   * of `ComposerSlashCommand` — that union is the set of thread modes, and is
+   * shared with mobile.
+   */
+  | {
+      id: string;
+      type: "composer-action";
+      action: "transcript";
+      label: string;
+      description: string;
     };
 
 type ComposerCommandGroup = {
@@ -90,7 +102,9 @@ function groupCommandItems(
     return [{ id: "default", label: null, items }];
   }
 
-  const builtInItems = items.filter((item) => item.type === "slash-command");
+  const builtInItems = items.filter(
+    (item) => item.type === "slash-command" || item.type === "composer-action",
+  );
   const providerItems = items.filter((item) => item.type === "provider-slash-command");
 
   const groups: ComposerCommandGroup[] = [];
@@ -234,7 +248,7 @@ const ComposerCommandMenuItem = memo(function ComposerCommandMenuItem(props: {
           theme={props.resolvedTheme}
         />
       ) : null}
-      {props.item.type === "slash-command" ? (
+      {props.item.type === "slash-command" || props.item.type === "composer-action" ? (
         <BotIcon className="size-4 shrink-0 text-muted-foreground/80" />
       ) : null}
       {props.item.type === "provider-slash-command" ? (

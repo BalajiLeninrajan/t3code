@@ -89,6 +89,8 @@ import { CodeMirrorPromptEditor } from "../CodeMirrorPromptEditor";
 import { useClientSettings } from "~/hooks/useSettings";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
+import { TranscriptViewDialog } from "./TranscriptViewDialog";
+import { buildTranscriptMarkdown } from "./transcriptText";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -976,6 +978,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
+  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
@@ -1094,6 +1097,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           description: "Switch this thread back to normal build mode",
         },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
+      const composerActionItems = [
+        {
+          id: "composer-action:transcript",
+          type: "composer-action",
+          action: "transcript",
+          label: "/transcript",
+          description: "Open the conversation in a vim buffer to select and copy",
+        },
+      ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "composer-action" }>>;
       const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
         (command) => ({
           id: `provider-slash-command:${selectedProvider}:${command.name}`,
@@ -1105,7 +1117,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         }),
       );
       const query = composerTrigger.query.trim().toLowerCase();
-      const slashCommandItems = [...builtInSlashCommandItems, ...providerSlashCommandItems];
+      const slashCommandItems = [
+        ...builtInSlashCommandItems,
+        ...composerActionItems,
+        ...providerSlashCommandItems,
+      ];
       if (!query) {
         return slashCommandItems;
       }
@@ -1698,6 +1714,17 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         );
         if (applied) {
           setComposerHighlightedItemId(null);
+        }
+        return;
+      }
+      if (item.type === "composer-action") {
+        const applied = applyPromptReplacement(trigger.rangeStart, trigger.rangeEnd, "", {
+          expectedText: snapshot.value.slice(trigger.rangeStart, trigger.rangeEnd),
+          focusEditorAfterReplace: false,
+        });
+        if (applied) {
+          setComposerHighlightedItemId(null);
+          setIsTranscriptOpen(true);
         }
         return;
       }
@@ -3043,6 +3070,14 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
 
             <div className="relative">
+              <TranscriptViewDialog
+                open={isTranscriptOpen}
+                onOpenChange={setIsTranscriptOpen}
+                title={activeThread?.title?.trim() || "Transcript"}
+                transcript={buildTranscriptMarkdown(activeThread?.messages ?? [], {
+                  title: activeThread?.title ?? null,
+                })}
+              />
               <PromptEditor
                 editorRef={composerEditorRef}
                 value={
