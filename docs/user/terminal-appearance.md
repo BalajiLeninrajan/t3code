@@ -1,7 +1,7 @@
 # Terminal appearance
 
 If [Ghostty](https://ghostty.org) is installed on the machine running the server, in-app terminals
-adopt its configuration automatically. Nothing to enable: T3 Code reads the same config Ghostty
+adopt its configuration automatically. Nothing to enable: B5 Code reads the same config Ghostty
 itself would, so your terminal in the app looks like your terminal outside it.
 
 What carries over:

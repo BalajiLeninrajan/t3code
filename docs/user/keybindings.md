@@ -4,7 +4,7 @@ Edit keybindings from **Settings** → **Keybindings**. That page lists every co
 shortcut, whether it is a default or your own, and warns about conflicts.
 
 The same configuration lives in `~/.t3/userdata/keybindings.json` on the machine running the
-server, if you prefer editing it directly. T3 Code writes the built-in defaults into that file on
+server, if you prefer editing it directly. B5 Code writes the built-in defaults into that file on
 first run, and adds any new defaults on later startups unless a rule of yours already claims the
 command or the shortcut.
 
@@ -84,7 +84,7 @@ Turn on **Settings** → **Keybindings** → **Vim mode** for modal navigation m
 Everything below is on top of your configured keybindings — ⌘/⌥ shortcuts keep working exactly as
 they do with vim mode off.
 
-T3 Code is modal in the way an editor is. Focus inside a text field is **insert** mode and behaves
+B5 Code is modal in the way an editor is. Focus inside a text field is **insert** mode and behaves
 normally; everywhere else is **normal** mode, where unmodified keys are commands. A small indicator
 in the bottom-right corner shows the current mode, the pane you are in, and any half-typed
 sequence, with a which-key popup listing what can come next.
@@ -203,5 +203,5 @@ The model picker is two lists, so it splits them:
 
 Because the picker is modal here, plain letters do not filter — press `/` first.
 
-In a browser, a few chords are claimed before T3 Code sees them (`⌃w` closes the tab on Windows and
+In a browser, a few chords are claimed before B5 Code sees them (`⌃w` closes the tab on Windows and
 Linux, for instance). The desktop app receives all of them.
