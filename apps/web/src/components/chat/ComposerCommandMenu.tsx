@@ -60,7 +60,7 @@ export type ComposerCommandItem =
   | {
       id: string;
       type: "composer-action";
-      action: "transcript";
+      action: "editor" | "transcript";
       label: string;
       description: string;
     };

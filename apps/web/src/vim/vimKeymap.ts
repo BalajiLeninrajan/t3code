@@ -213,6 +213,12 @@ export const VIM_KEYMAP: readonly VimKeymapEntry[] = [
     section: "Leader",
     desc: "Stash prompt",
   },
+  {
+    keys: [VIM_LEADER, "c", "e"],
+    action: control("composerEditor"),
+    section: "Leader",
+    desc: "Edit prompt in $EDITOR",
+  },
 
   // buffer/thread
   {

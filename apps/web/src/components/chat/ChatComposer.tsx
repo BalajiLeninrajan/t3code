@@ -89,8 +89,7 @@ import { CodeMirrorPromptEditor } from "../CodeMirrorPromptEditor";
 import { useClientSettings } from "~/hooks/useSettings";
 import { ProviderModelPicker } from "./ProviderModelPicker";
 import { type ComposerCommandItem, ComposerCommandMenu } from "./ComposerCommandMenu";
-import { TranscriptViewDialog } from "./TranscriptViewDialog";
-import { buildTranscriptMarkdown } from "./transcriptText";
+import type { EditorSessionKind } from "./composerEditorSession";
 import { ComposerPendingApprovalActions } from "./ComposerPendingApprovalActions";
 import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
@@ -515,6 +514,20 @@ export interface ChatComposerHandle {
 // --------------------------------------------------------------------------
 
 export interface ChatComposerProps {
+  /**
+   * Open the draft, or the conversation so far, in the user's `$EDITOR`.
+   *
+   * The draft text is passed rather than read back out of the composer,
+   * because the prompt editor is controlled: when this fires from `/editor`
+   * the state that removed the trigger text has not reached the editor's
+   * document yet, and reading it would send `/editor` off to the file.
+   */
+  onOpenInEditor: (input: { kind: EditorSessionKind; draft: string }) => void;
+  /**
+   * The terminal running the user's editor, rendered in place of the prompt
+   * box while a session is open. Null the rest of the time.
+   */
+  editorSurface: ReactNode;
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   routeKind: "server" | "draft";
@@ -631,6 +644,8 @@ export interface ChatComposerProps {
 
 export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps) {
   const {
+    onOpenInEditor,
+    editorSurface,
     composerDraftTarget,
     environmentId,
     routeKind,
@@ -978,7 +993,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isComposerFooterCompact, setIsComposerFooterCompact] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
-  const [isTranscriptOpen, setIsTranscriptOpen] = useState(false);
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [composerMenuAnchor, setComposerMenuAnchor] = useState<HTMLDivElement | null>(null);
   const [isStashMenuOpen, setIsStashMenuOpen] = useState(false);
@@ -1099,11 +1113,18 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "slash-command" }>>;
       const composerActionItems = [
         {
+          id: "composer-action:editor",
+          type: "composer-action",
+          action: "editor",
+          label: "/editor",
+          description: "Write this prompt in your $EDITOR; it comes back when you quit",
+        },
+        {
           id: "composer-action:transcript",
           type: "composer-action",
           action: "transcript",
           label: "/transcript",
-          description: "Open the conversation in a vim buffer to select and copy",
+          description: "Open the conversation in your $EDITOR to select and copy",
         },
       ] satisfies ReadonlyArray<Extract<ComposerCommandItem, { type: "composer-action" }>>;
       const providerSlashCommandItems = (selectedProviderStatus?.slashCommands ?? []).map(
@@ -1724,7 +1745,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         });
         if (applied) {
           setComposerHighlightedItemId(null);
-          setIsTranscriptOpen(true);
+          onOpenInEditor({
+            kind: item.action === "editor" ? "draft" : "transcript",
+            draft: `${snapshot.value.slice(0, trigger.rangeStart)}${snapshot.value.slice(trigger.rangeEnd)}`,
+          });
         }
         return;
       }
@@ -3070,52 +3094,73 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               )}
 
             <div className="relative">
-              <TranscriptViewDialog
-                open={isTranscriptOpen}
-                onOpenChange={setIsTranscriptOpen}
-                title={activeThread?.title?.trim() || "Transcript"}
-                transcript={buildTranscriptMarkdown(activeThread?.messages ?? [], {
-                  title: activeThread?.title ?? null,
-                })}
+              {/*
+                The vim layer drives controls it has no bindable command for by
+                clicking a marked element, so `<leader>ce` needs something to
+                click. Hidden rather than absent: it is a real control here,
+                just not one worth a visible button next to the send action.
+              */}
+              <button
+                type="button"
+                data-composer-editor-trigger
+                tabIndex={-1}
+                aria-hidden
+                className="sr-only"
+                onClick={() =>
+                  onOpenInEditor({ kind: "draft", draft: readComposerSnapshot().value })
+                }
               />
-              <PromptEditor
-                editorRef={composerEditorRef}
-                value={
-                  isComposerApprovalState
-                    ? ""
-                    : activePendingProgress
-                      ? activePendingProgress.customAnswer
-                      : prompt
-                }
-                cursor={composerCursor}
-                terminalContexts={
-                  !isComposerApprovalState && pendingUserInputs.length === 0
-                    ? composerTerminalContexts
-                    : []
-                }
-                skills={selectedProviderStatus?.skills ?? []}
-                {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
-                onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
-                onChange={onPromptChange}
-                onCommandKeyDown={onComposerCommandKey}
-                onPaste={onComposerPaste}
-                placeholder={
-                  isComposerApprovalState
-                    ? (activePendingApproval?.detail ?? "Resolve this approval request to continue")
-                    : activePendingProgress
-                      ? "Type your own answer, or leave this blank to use the selected option"
-                      : showPlanFollowUpPrompt && activeProposedPlan
-                        ? "Add feedback to refine the plan, or leave this blank to implement it"
-                        : projectSelectionRequired
-                          ? "Choose a project above to start a thread"
-                          : noProviderAvailable
-                            ? "Enable a provider in Settings to send a message"
-                            : phase === "disconnected"
-                              ? "Ask for follow-up changes or attach images"
-                              : "Ask anything, @tag files/folders, $use skills, or / for commands"
-                }
-                disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
-              />
+              {editorSurface ? (
+                // Unmounting the prompt editor is safe: the draft lives in the
+                // composer store, not in the editor, so it survives the round
+                // trip and comes back with whatever the editor wrote.
+                <div
+                  data-composer-editor-surface
+                  className="h-[360px] overflow-hidden rounded-md border border-border"
+                >
+                  {editorSurface}
+                </div>
+              ) : (
+                <PromptEditor
+                  editorRef={composerEditorRef}
+                  value={
+                    isComposerApprovalState
+                      ? ""
+                      : activePendingProgress
+                        ? activePendingProgress.customAnswer
+                        : prompt
+                  }
+                  cursor={composerCursor}
+                  terminalContexts={
+                    !isComposerApprovalState && pendingUserInputs.length === 0
+                      ? composerTerminalContexts
+                      : []
+                  }
+                  skills={selectedProviderStatus?.skills ?? []}
+                  {...(showMobilePendingAnswerActions ? { className: "max-sm:pb-11" } : {})}
+                  onRemoveTerminalContext={removeComposerTerminalContextFromDraft}
+                  onChange={onPromptChange}
+                  onCommandKeyDown={onComposerCommandKey}
+                  onPaste={onComposerPaste}
+                  placeholder={
+                    isComposerApprovalState
+                      ? (activePendingApproval?.detail ??
+                        "Resolve this approval request to continue")
+                      : activePendingProgress
+                        ? "Type your own answer, or leave this blank to use the selected option"
+                        : showPlanFollowUpPrompt && activeProposedPlan
+                          ? "Add feedback to refine the plan, or leave this blank to implement it"
+                          : projectSelectionRequired
+                            ? "Choose a project above to start a thread"
+                            : noProviderAvailable
+                              ? "Enable a provider in Settings to send a message"
+                              : phase === "disconnected"
+                                ? "Ask for follow-up changes or attach images"
+                                : "Ask anything, @tag files/folders, $use skills, or / for commands"
+                  }
+                  disabled={isConnecting || isComposerApprovalState || projectSelectionRequired}
+                />
+              )}
               {showMobilePendingAnswerActions ? (
                 <div
                   data-chat-composer-mobile-pending-actions="true"
