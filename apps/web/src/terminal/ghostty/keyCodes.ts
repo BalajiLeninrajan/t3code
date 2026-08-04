@@ -233,6 +233,33 @@ export function loadGhosttyKeyboardLayoutMap(): Promise<GhosttyKeyboardLayoutMap
   return promise;
 }
 
+/** `shift` in Ghostty's modifier bitset, matching `encodeKey`'s packing. */
+const GHOSTTY_MOD_SHIFT = 1;
+
+/**
+ * The modifiers the keyboard layout spent producing this key's character.
+ *
+ * Native Ghostty reports these; a browser `KeyboardEvent` has no equivalent
+ * field, so it is derived by asking whether the character differs from the one
+ * the same physical key produces unshifted.
+ *
+ * It only matters under the Kitty keyboard protocol, which is why this looked
+ * fine everywhere except inside an editor that turns the protocol on. There,
+ * a modifier reported as still-active is reported *instead of* the character
+ * it already produced: `shift`+`.` arrives as `<S-.>` rather than `>`. Legacy
+ * encoding just sends the text, so nothing downstream noticed.
+ */
+export function ghosttyConsumedMods(
+  event: Pick<KeyboardEvent, "code" | "key" | "shiftKey">,
+  layoutMap?: GhosttyKeyboardLayoutMap,
+): number {
+  if (!event.shiftKey) return 0;
+  if ([...event.key].length !== 1) return 0;
+  const unshiftedCodepoint = ghosttyUnshiftedCodepoint(event, layoutMap);
+  if (unshiftedCodepoint === 0) return 0;
+  return event.key.codePointAt(0) === unshiftedCodepoint ? 0 : GHOSTTY_MOD_SHIFT;
+}
+
 export function ghosttyUnshiftedCodepoint(
   event: Pick<KeyboardEvent, "code" | "key" | "shiftKey">,
   layoutMap?: GhosttyKeyboardLayoutMap,
