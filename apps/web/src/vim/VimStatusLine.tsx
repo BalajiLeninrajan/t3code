@@ -63,11 +63,7 @@ export function VimStatusLine() {
         <span
           className={cn(
             "rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-[0.08em] uppercase",
-            mode === "normal"
-              ? "bg-primary/15 text-primary"
-              : mode === "visual"
-                ? "bg-warning/15 text-warning"
-                : "bg-muted text-muted-foreground",
+            mode === "normal" ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
           )}
         >
           {mode}

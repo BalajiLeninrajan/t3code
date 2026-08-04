@@ -1693,13 +1693,3 @@ label:has(> select#reasoning-effort) select {
   opacity: 0.3;
   pointer-events: none;
 }
-
-/* Visual-mode selection in the vim composer.
-   The vim extension paints the native selection transparent so its block
-   cursor reads cleanly, and its rule carries CodeMirror's own generated scope
-   class — so nothing declared inside a CodeMirror theme can outrank it. This
-   lives here, where the selector can be made specific enough to win. */
-[data-vim-codemirror] .cm-editor .cm-scroller.cm-vimMode .cm-line ::selection,
-[data-vim-codemirror] .cm-editor .cm-scroller.cm-vimMode .cm-line::selection {
-  background-color: color-mix(in srgb, var(--primary) 40%, transparent) !important;
-}

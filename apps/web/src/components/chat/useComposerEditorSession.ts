@@ -38,6 +38,8 @@ export interface ComposerEditorSessionInput {
   }) => Promise<string | null>;
   /** Called with the edited text when a read-back session's editor exits. */
   readonly onReadBack: (contents: string) => void;
+  /** Called once the editor has exited, so its terminal can be reaped. */
+  readonly onSessionEnded: (terminalId: string) => void;
   readonly onError: (message: string) => void;
 }
 
@@ -59,7 +61,14 @@ interface ReadTarget {
 }
 
 export function useComposerEditorSession(input: ComposerEditorSessionInput): ComposerEditorSession {
-  const { environmentId, runningTerminalIds, runTerminalCommand, onReadBack, onError } = input;
+  const {
+    environmentId,
+    runningTerminalIds,
+    runTerminalCommand,
+    onReadBack,
+    onSessionEnded,
+    onError,
+  } = input;
   const writeProjectFile = useAtomCommand(projectEnvironment.writeFile, { reportFailure: false });
 
   // A ref rather than state: nothing renders from the session, and re-rendering
@@ -71,8 +80,8 @@ export function useComposerEditorSession(input: ComposerEditorSessionInput): Com
 
   // The chat view passes these as inline closures, so pinning them here keeps
   // the effect below driven by the data it actually cares about.
-  const callbacks = useRef({ onReadBack, onError });
-  callbacks.current = { onReadBack, onError };
+  const callbacks = useRef({ onReadBack, onSessionEnded, onError });
+  callbacks.current = { onReadBack, onSessionEnded, onError };
   const runningTerminalIdsRef = useRef(runningTerminalIds);
   runningTerminalIdsRef.current = runningTerminalIds;
 
@@ -89,7 +98,12 @@ export function useComposerEditorSession(input: ComposerEditorSessionInput): Com
       running: runningTerminalIds.includes(session.terminalId),
     });
     sessionRef.current = state;
-    if (state.phase === "idle") setActiveTerminalId(null);
+    if (state.phase === "idle") {
+      setActiveTerminalId(null);
+      // Nothing renders this terminal once the editor is gone, and leaving it
+      // behind would pile up a dead tab per session.
+      callbacks.current.onSessionEnded(session.terminalId);
+    }
     if (effect) {
       setReadTarget({ cwd: effect.cwd, relativePath: effect.relativePath });
     }

@@ -11,7 +11,7 @@ import { create } from "zustand";
 
 import type { VimRegion } from "./vimRegions";
 
-export type VimMode = "normal" | "insert" | "visual";
+export type VimMode = "normal" | "insert";
 
 const EMPTY_PENDING: readonly string[] = [];
 

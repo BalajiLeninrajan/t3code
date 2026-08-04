@@ -2871,9 +2871,9 @@ function ChatViewContent(props: ChatViewProps) {
           };
 
       if (input.openDrawer === false) {
-        // Registered so its id is never handed out twice, but neither shown nor
-        // made active: the caller is rendering this terminal somewhere else,
-        // and two Ghostty surfaces on one PTY fight over size and focus.
+        // Registered so the id is never handed out twice, but neither shown nor
+        // made active: the caller renders this terminal somewhere else, and two
+        // Ghostty surfaces on one PTY fight over size and focus.
         storeEnsureTerminal(activeThreadRef, targetTerminalId, { active: false });
       } else if (shouldCreateNewTerminal) {
         storeNewTerminal(activeThreadRef, targetTerminalId);
@@ -2905,6 +2905,13 @@ function ChatViewContent(props: ChatViewProps) {
         }
         return null;
       }
+      if (input.openDrawer === false) {
+        // The drawer reconciles its tab list against the server's terminals, so
+        // hiding this one means marking it suppressed — otherwise it reappears
+        // down there the moment the server reports it. UI-only; the session
+        // itself keeps running for whoever is rendering it.
+        storeCloseTerminal(activeThreadRef, targetTerminalId);
+      }
       return targetTerminalId;
     },
     [
@@ -2920,6 +2927,7 @@ function ChatViewContent(props: ChatViewProps) {
       environmentId,
       openTerminal,
       storeEnsureTerminal,
+      storeCloseTerminal,
       activeKnownTerminalIds,
       allocatableActiveTerminalIds,
       runningTerminalIds,
@@ -2967,6 +2975,12 @@ function ChatViewContent(props: ChatViewProps) {
       setComposerDraftPrompt(composerDraftTarget, contents);
       composerRef.current?.resetCursorState({ prompt: contents, cursor: contents.length });
     },
+    onSessionEnded: (terminalId) => {
+      void closeTerminalMutation({
+        environmentId,
+        input: { threadId: activeThreadId as ThreadId, terminalId, deleteHistory: true },
+      });
+    },
     onError: (message) => {
       if (activeThreadId) setThreadError(activeThreadId, message);
     },
@@ -2989,6 +3003,23 @@ function ChatViewContent(props: ChatViewProps) {
     },
     [activeThread?.messages, activeThread?.title, openInEditor],
   );
+  /** The same env `runTerminalCommand` opens an editor session with. */
+  const composerEditorRuntimeEnv = useMemo(
+    () =>
+      activeProject
+        ? projectScriptRuntimeEnv({
+            project: { cwd: activeProject.workspaceRoot },
+            worktreePath: activeThread?.worktreePath ?? null,
+          })
+        : undefined,
+    [activeProject, activeThread?.worktreePath],
+  );
+  // Bumped per session so the surface fits itself to the composer once it is
+  // actually on screen; a constant here left it measuring a stale size.
+  const [composerEditorSurfaceEpoch, setComposerEditorSurfaceEpoch] = useState(0);
+  useEffect(() => {
+    if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
+  }, [editorTerminalId]);
   /**
    * While the editor is open the terminal running it takes the composer's
    * place, so you write the prompt where the prompt goes rather than in a
@@ -3003,11 +3034,15 @@ function ChatViewContent(props: ChatViewProps) {
         terminalLabel="editor"
         cwd={gitCwd ?? activeProject.workspaceRoot}
         worktreePath={activeThread?.worktreePath ?? null}
+        // Must match the env the session was opened with. Attaching with a
+        // different env is attaching to a differently-shaped session, and the
+        // editor renders against whatever it finds there.
+        {...(composerEditorRuntimeEnv ? { runtimeEnv: composerEditorRuntimeEnv } : {})}
         onSessionExited={() => {}}
         onAddTerminalContext={addTerminalContextToDraft}
-        focusRequestId={0}
+        focusRequestId={composerEditorSurfaceEpoch}
         autoFocus
-        resizeEpoch={0}
+        resizeEpoch={composerEditorSurfaceEpoch}
         drawerHeight={COMPOSER_EDITOR_SURFACE_HEIGHT}
         keybindings={keybindings}
       />

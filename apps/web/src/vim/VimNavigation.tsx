@@ -119,15 +119,6 @@ const ALWAYS_GLOBAL_KEYS: ReadonlySet<string> = new Set([
   "<C-l>",
 ]);
 
-/**
- * Whether a CodeMirror editor holds the keyboard — the composer, or the
- * transcript buffer inside its dialog. Any of them runs its own vim, so the
- * app hands the keys straight over.
- */
-function isCodeMirrorFocused(): boolean {
-  return document.activeElement?.closest(".cm-editor") != null;
-}
-
 /** Motions that also mean something inside a card grid. */
 const GRID_DIRECTIONS: Partial<Record<VimMotion, "left" | "right" | "up" | "down">> = {
   left: "left",
@@ -290,11 +281,7 @@ export function VimNavigation() {
         focusRegion(useVimStateStore.getState().region);
       }
 
-      // CodeMirror runs its own vim, so while it holds the keyboard the mode
-      // shown is whatever it reports; elsewhere the mode follows focus.
-      // CodeMirror reports its own mode as it changes, so focus sync must not
-      // stomp on it — it only speaks for everything outside the editor.
-      if (!isCodeMirrorFocused()) setMode(modeForActiveElement());
+      setMode(modeForActiveElement());
       const region = regionForElement(document.activeElement);
       if (region) setRegion(region);
     };
@@ -330,22 +317,19 @@ export function VimNavigation() {
         return;
       }
 
+      // A focused terminal owns every key. Whatever is running in it — a
+      // shell, or the editor the composer opened — has its own idea of what
+      // Escape and `:` mean, and both are keys it cannot do without. Getting
+      // out is a deliberate chord, handled by the keybinding layer, not here.
+      if (isTerminalFocused()) return;
+
       const { pending, setPending, clearPending } = useVimStateStore.getState();
       const key = vimKeyFromEvent(event);
-
-      // A CodeMirror editor is checked before overlays: the transcript buffer
-      // lives inside a dialog, and the dropdown handling below would otherwise
-      // eat its motions — j/k became arrow keys and h/l went nowhere.
-      const codeMirrorMode = isCodeMirrorFocused() ? useVimStateStore.getState().mode : null;
-      if (codeMirrorMode !== null && pending.length === 0) {
-        const appOwnsKey = codeMirrorMode !== "insert" && ALWAYS_GLOBAL_KEYS.has(key ?? "");
-        if (!appOwnsKey) return;
-      }
 
       // Overlays own the keyboard, but a vim user still expects to move
       // through them without arrow keys. This runs before the mode split
       // because most of these overlays keep a text input focused.
-      if (key !== null && codeMirrorMode === null && isFocusInFloatingLayer()) {
+      if (key !== null && isFocusInFloatingLayer()) {
         const claim = () => {
           event.preventDefault();
           event.stopPropagation();
@@ -406,16 +390,12 @@ export function VimNavigation() {
         return;
       }
 
-      // Inside CodeMirror the mode comes from the editor itself, which reports
-      // it as it changes; focus alone cannot answer the question, because the
-      // composer is a text field in every mode.
-      const activeMode = codeMirrorMode ?? modeForActiveElement();
+      const activeMode = modeForActiveElement();
 
       if (activeMode === "insert") {
-        // Escape (and vim's ⌃[) leaves any other text field outright — only the
-        // composer is a buffer. The terminal keeps its own Escape, which
-        // belongs to whatever is running in the shell.
-        if (key !== "<Esc>" || isTerminalFocused()) return;
+        // Escape (and vim's ⌃[) leaves a text field outright. A focused
+        // terminal never reaches here — it returned above with every key.
+        if (key !== "<Esc>") return;
         const active = document.activeElement;
         if (!(active instanceof HTMLElement)) return;
         event.preventDefault();
