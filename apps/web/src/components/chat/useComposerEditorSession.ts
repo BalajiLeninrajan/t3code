@@ -53,6 +53,8 @@ export interface ComposerEditorSession {
    * renders it in place of the prompt box, so this is state rather than a ref.
    */
   readonly activeTerminalId: string | null;
+  /** What the running editor was opened on, which decides how much room it gets. */
+  readonly activeKind: EditorSessionKind | null;
 }
 
 interface ReadTarget {
@@ -76,7 +78,9 @@ export function useComposerEditorSession(input: ComposerEditorSessionInput): Com
   const sessionRef = useRef<EditorSessionState>(IDLE_EDITOR_SESSION);
   const sessionCounterRef = useRef(0);
   const [readTarget, setReadTarget] = useState<ReadTarget | null>(null);
-  const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  const [active, setActive] = useState<{ terminalId: string; kind: EditorSessionKind } | null>(
+    null,
+  );
 
   // The chat view passes these as inline closures, so pinning them here keeps
   // the effect below driven by the data it actually cares about.
@@ -99,7 +103,7 @@ export function useComposerEditorSession(input: ComposerEditorSessionInput): Com
     });
     sessionRef.current = state;
     if (state.phase === "idle") {
-      setActiveTerminalId(null);
+      setActive(null);
       // Nothing renders this terminal once the editor is gone, and leaving it
       // behind would pile up a dead tab per session.
       callbacks.current.onSessionEnded(session.terminalId);
@@ -179,11 +183,15 @@ export function useComposerEditorSession(input: ComposerEditorSessionInput): Com
           terminalId,
           running: runningTerminalIdsRef.current.includes(terminalId),
         }).state;
-        setActiveTerminalId(terminalId);
+        setActive({ terminalId, kind: request.kind });
       })();
     },
     [environmentId, onError, runTerminalCommand, writeProjectFile],
   );
 
-  return { openInEditor, activeTerminalId };
+  return {
+    openInEditor,
+    activeTerminalId: active?.terminalId ?? null,
+    activeKind: active?.kind ?? null,
+  };
 }

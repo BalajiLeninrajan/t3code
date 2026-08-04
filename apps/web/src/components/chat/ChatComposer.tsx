@@ -526,6 +526,8 @@ export interface ChatComposerProps {
    * box while a session is open. Null the rest of the time.
    */
   editorSurface: ReactNode;
+  /** Pixel height for that surface, matching what the terminal fits itself to. */
+  editorSurfaceHeight: number;
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   routeKind: "server" | "draft";
@@ -644,6 +646,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const {
     onOpenInEditor,
     editorSurface,
+    editorSurfaceHeight,
     composerDraftTarget,
     environmentId,
     routeKind,
@@ -2721,6 +2724,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     <form
       ref={composerFormRef}
       onSubmit={submitComposer}
+      // The prompt box is sized for prose, but an editor session fills it with
+      // a terminal that wants columns — so the whole composer widens with it,
+      // rather than the terminal spilling out of a box that stayed narrow.
       className="mx-auto w-full min-w-0 max-w-3xl"
       data-chat-composer-form="true"
     >
@@ -3114,7 +3120,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   // Without it the vim layer claims Escape and `:` globally,
                   // which is exactly the two keys an editor cannot do without.
                   data-terminal-owner="composer"
-                  className="h-[360px] overflow-hidden rounded-md border border-border"
+                  // The composer is capped at reading width by a container above
+                  // it, so the surface breaks out rather than trying to widen
+                  // that — an editor wants columns. It grows about its own
+                  // centre, which the window's is not: the sidebar takes a bite
+                  // out of one side, so a plain `vw` width runs off the other.
+                  className="relative left-1/2 -translate-x-1/2 overflow-hidden rounded-md border border-border"
+                  style={{
+                    height: editorSurfaceHeight,
+                    width: "max(100%, min(1600px, calc(100vw - 320px)))",
+                  }}
                 >
                   {editorSurface}
                 </div>

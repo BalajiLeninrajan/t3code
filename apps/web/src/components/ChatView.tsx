@@ -464,11 +464,14 @@ function formatOutgoingPrompt(params: {
   return applyClaudePromptEffortPrefix(params.text, promptEffort);
 }
 /**
- * How tall the composer grows while an editor session owns it. Enough rows for
- * a full-screen editor to be usable without the terminal swallowing the whole
- * conversation above it.
+ * How much of the window the composer takes while an editor session owns it.
+ * A full-screen editor wants room; a transcript is there to be read and
+ * scrolled through, so it gets more of it.
  */
-const COMPOSER_EDITOR_SURFACE_HEIGHT = 360;
+const COMPOSER_EDITOR_VIEWPORT_FRACTION = 0.6;
+const TRANSCRIPT_EDITOR_VIEWPORT_FRACTION = 0.75;
+/** Below this the editor stops being usable, whatever the window is doing. */
+const MIN_COMPOSER_EDITOR_SURFACE_HEIGHT = 240;
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -2967,7 +2970,11 @@ function ChatViewContent(props: ChatViewProps) {
     [activeProject, runTerminalCommand, setLastInvokedScriptByProjectId],
   );
 
-  const { openInEditor, activeTerminalId: editorTerminalId } = useComposerEditorSession({
+  const {
+    openInEditor,
+    activeTerminalId: editorTerminalId,
+    activeKind: editorKind,
+  } = useComposerEditorSession({
     environmentId,
     runningTerminalIds,
     runTerminalCommand,
@@ -3020,6 +3027,32 @@ function ChatViewContent(props: ChatViewProps) {
   useEffect(() => {
     if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
   }, [editorTerminalId]);
+  const [windowHeight, setWindowHeight] = useState(() =>
+    typeof window === "undefined" ? 0 : window.innerHeight,
+  );
+  useEffect(() => {
+    const onResize = () => setWindowHeight(window.innerHeight);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  /**
+   * One number drives both the box and the terminal's own fit. They have to
+   * agree — sizing the box in CSS while the surface measured something else is
+   * what made the first version render wrong.
+   */
+  const composerEditorSurfaceHeight = Math.max(
+    MIN_COMPOSER_EDITOR_SURFACE_HEIGHT,
+    Math.round(
+      windowHeight *
+        (editorKind === "transcript"
+          ? TRANSCRIPT_EDITOR_VIEWPORT_FRACTION
+          : COMPOSER_EDITOR_VIEWPORT_FRACTION),
+    ),
+  );
+  // Re-fit when the window changes size, not just when a session starts.
+  useEffect(() => {
+    if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
+  }, [composerEditorSurfaceHeight, editorTerminalId]);
   /**
    * While the editor is open the terminal running it takes the composer's
    * place, so you write the prompt where the prompt goes rather than in a
@@ -3043,7 +3076,7 @@ function ChatViewContent(props: ChatViewProps) {
         focusRequestId={composerEditorSurfaceEpoch}
         autoFocus
         resizeEpoch={composerEditorSurfaceEpoch}
-        drawerHeight={COMPOSER_EDITOR_SURFACE_HEIGHT}
+        drawerHeight={composerEditorSurfaceHeight}
         keybindings={keybindings}
       />
     ) : null;
@@ -6051,6 +6084,7 @@ function ChatViewContent(props: ChatViewProps) {
                           <ChatComposer
                             onOpenInEditor={openComposerInEditor}
                             editorSurface={composerEditorSurface}
+                            editorSurfaceHeight={composerEditorSurfaceHeight}
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}
