@@ -72,18 +72,26 @@ const SELECTED_ITEM_SELECTOR = [
 ].join(",");
 
 /**
+ * Overlays already aligned since they opened. Each opening is a fresh element,
+ * so this resets naturally and never needs clearing.
+ */
+const alignedOverlays = new WeakSet<Element>();
+
+/**
  * Menus open with the highlight on the first option rather than the one
  * currently in effect, so the first ⌃n would step off the top of the list
- * instead of away from the current value. Move to the selected option first,
- * once, and let the arrow press go from there.
+ * instead of away from the current value. Move to the selected option, then
+ * never again for this opening — realigning on every keystroke would drag the
+ * highlight back and cap movement at one step either side.
  */
 function alignOverlayHighlightToSelection(): void {
   const active = document.activeElement;
   const overlay = active?.closest('[data-slot$="-popup"], [data-command-palette]');
-  if (!overlay) return;
-  // Only when the highlight has not moved yet — otherwise this would drag the
-  // cursor back to the selected item on every keystroke.
-  if (active?.matches(SELECTED_ITEM_SELECTOR)) return;
+  if (!overlay || alignedOverlays.has(overlay)) return;
+  alignedOverlays.add(overlay);
+
+  // Overlays that keep focus on an input and track the highlight virtually
+  // have no option to move focus to; leave those to their own handling.
   const selected = overlay.querySelector<HTMLElement>(SELECTED_ITEM_SELECTOR);
   if (!selected || selected.contains(active)) return;
   selected.focus({ preventScroll: false });
