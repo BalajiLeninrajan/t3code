@@ -528,6 +528,8 @@ export interface ChatComposerProps {
   editorSurface: ReactNode;
   /** Pixel height for that surface, matching what the terminal fits itself to. */
   editorSurfaceHeight: number;
+  /** CSS width for that surface, which differs by what is open in it. */
+  editorSurfaceWidth: string;
   composerDraftTarget: ScopedThreadRef | DraftId;
   environmentId: EnvironmentId;
   routeKind: "server" | "draft";
@@ -647,6 +649,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     onOpenInEditor,
     editorSurface,
     editorSurfaceHeight,
+    editorSurfaceWidth,
     composerDraftTarget,
     environmentId,
     routeKind,
@@ -3128,7 +3131,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   className="relative left-1/2 -translate-x-1/2 overflow-hidden rounded-md border border-border"
                   style={{
                     height: editorSurfaceHeight,
-                    width: "max(100%, min(1600px, calc(100vw - 320px)))",
+                    width: editorSurfaceWidth,
                   }}
                 >
                   {editorSurface}

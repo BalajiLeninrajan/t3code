@@ -472,6 +472,12 @@ const COMPOSER_EDITOR_VIEWPORT_FRACTION = 0.6;
 const TRANSCRIPT_EDITOR_VIEWPORT_FRACTION = 0.75;
 /** Below this the editor stops being usable, whatever the window is doing. */
 const MIN_COMPOSER_EDITOR_SURFACE_HEIGHT = 240;
+/**
+ * How wide each kind gets. A prompt is still prose and reads badly in very long
+ * lines; a transcript is a document, and wants the room.
+ */
+const COMPOSER_EDITOR_MAX_WIDTH = "1040px";
+const TRANSCRIPT_EDITOR_MAX_WIDTH = "1600px";
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -3049,6 +3055,9 @@ function ChatViewContent(props: ChatViewProps) {
           : COMPOSER_EDITOR_VIEWPORT_FRACTION),
     ),
   );
+  const composerEditorSurfaceWidth = `max(100%, min(${
+    editorKind === "transcript" ? TRANSCRIPT_EDITOR_MAX_WIDTH : COMPOSER_EDITOR_MAX_WIDTH
+  }, calc(100vw - 320px)))`;
   // Re-fit when the window changes size, not just when a session starts.
   useEffect(() => {
     if (editorTerminalId !== null) setComposerEditorSurfaceEpoch((value) => value + 1);
@@ -6085,6 +6094,7 @@ function ChatViewContent(props: ChatViewProps) {
                             onOpenInEditor={openComposerInEditor}
                             editorSurface={composerEditorSurface}
                             editorSurfaceHeight={composerEditorSurfaceHeight}
+                            editorSurfaceWidth={composerEditorSurfaceWidth}
                             composerRef={composerRef}
                             composerDraftTarget={composerDraftTarget}
                             environmentId={environmentId}
