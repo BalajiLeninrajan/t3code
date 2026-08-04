@@ -47,7 +47,6 @@ import {
   isFocusInFloatingLayer,
   modeForActiveElement,
   useVimStateStore,
-  type VimMode,
 } from "./vimState";
 
 /** A bare `j` scrolls about three text lines, which reads as one "step". */
@@ -88,19 +87,6 @@ const ALWAYS_GLOBAL_KEYS: ReadonlySet<string> = new Set([
 /** Whether the CodeMirror composer currently holds the keyboard. */
 function isCodeMirrorFocused(): boolean {
   return document.activeElement?.closest("[data-vim-codemirror]") != null;
-}
-
-/**
- * CodeMirror's vim mode, read off the DOM class it already sets, so the app's
- * indicator agrees with the editor without subscribing to its internals.
- */
-function codeMirrorVimMode(): VimMode {
-  const host = document.activeElement?.closest("[data-vim-codemirror]");
-  const panel = host?.querySelector(".cm-vim-panel");
-  const text = panel?.textContent?.toLowerCase() ?? "";
-  if (text.includes("insert")) return "insert";
-  if (text.includes("visual")) return "visual";
-  return host?.querySelector(".cm-fat-cursor") ? "normal" : "insert";
 }
 
 /** Motions that also mean something inside a card grid. */
@@ -267,7 +253,9 @@ export function VimNavigation() {
 
       // CodeMirror runs its own vim, so while it holds the keyboard the mode
       // shown is whatever it reports; elsewhere the mode follows focus.
-      setMode(isCodeMirrorFocused() ? codeMirrorVimMode() : modeForActiveElement());
+      // CodeMirror reports its own mode as it changes, so focus sync must not
+      // stomp on it — it only speaks for everything outside the editor.
+      if (!isCodeMirrorFocused()) setMode(modeForActiveElement());
       const region = regionForElement(document.activeElement);
       if (region) setRegion(region);
     };
@@ -368,16 +356,24 @@ export function VimNavigation() {
         return;
       }
 
-      // CodeMirror owns the composer, vim and all. Only the app-wide keys are
-      // taken back from it, so the leader still works with the caret in there.
-      if (isCodeMirrorFocused() && !ALWAYS_GLOBAL_KEYS.has(key ?? "")) {
-        return;
+      // CodeMirror owns the composer, vim and all. A handful of app-wide keys
+      // are taken back from it so the leader still works with the caret in
+      // there — but only outside insert mode. Claiming them unconditionally
+      // meant <Space> and : could never be typed into a message at all.
+      const codeMirrorMode = isCodeMirrorFocused() ? useVimStateStore.getState().mode : null;
+      // Once a sequence is part-typed the app owns every key until it resolves
+      // or is cancelled — which-key is modal. Handing the second key back to
+      // the editor stranded the popup with no way to dismiss it, and made every
+      // leader binding past its first key unreachable inside the composer.
+      if (codeMirrorMode !== null && pending.length === 0) {
+        const appOwnsKey = codeMirrorMode !== "insert" && ALWAYS_GLOBAL_KEYS.has(key ?? "");
+        if (!appOwnsKey) return;
       }
 
-      // Focus alone cannot answer "what mode is this?" for the composer: it is
-      // a text field either way, so reading the DOM would call composer-normal
-      // "insert" and let the leader type a space instead of opening which-key.
-      const activeMode = isCodeMirrorFocused() ? "normal" : modeForActiveElement();
+      // Inside CodeMirror the mode comes from the editor itself, which reports
+      // it as it changes; focus alone cannot answer the question, because the
+      // composer is a text field in every mode.
+      const activeMode = codeMirrorMode ?? modeForActiveElement();
 
       if (activeMode === "insert") {
         // Escape (and vim's ⌃[) leaves any other text field outright — only the
@@ -397,6 +393,16 @@ export function VimNavigation() {
       }
 
       if (key === null) return;
+
+      if (key === "<BS>") {
+        // Backspace steps back one level of the sequence, as which-key does.
+        // With nothing pending it is just a backspace.
+        if (pending.length === 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setPending(pending.slice(0, -1));
+        return;
+      }
 
       if (key === "<Esc>") {
         // Only claim Escape when it has a sequence to cancel; otherwise it

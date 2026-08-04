@@ -14,8 +14,8 @@
 import { markdown } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { EditorState, Prec, type Extension } from "@codemirror/state";
-import { EditorView, lineNumbers } from "@codemirror/view";
-import { vim } from "@replit/codemirror-vim";
+import { EditorView, highlightActiveLineGutter, lineNumbers } from "@codemirror/view";
+import { getCM, vim } from "@replit/codemirror-vim";
 import { tags } from "@lezer/highlight";
 import { useEffect, useImperativeHandle, useRef } from "react";
 
@@ -28,6 +28,7 @@ import { INLINE_TERMINAL_CONTEXT_PLACEHOLDER } from "~/lib/terminalContext";
 import { composerChips } from "./codeMirrorComposerChips";
 import { markdownConceal } from "./codeMirrorMarkdownConceal";
 import { cn } from "~/lib/utils";
+import { useVimStateStore } from "~/vim/vimState";
 import type { ComposerPromptEditorHandle, ComposerPromptEditorProps } from "./ComposerPromptEditor";
 
 /**
@@ -71,13 +72,15 @@ const editorTheme = EditorView.theme({
   },
   ".cm-activeLineGutter": { backgroundColor: "transparent", color: "var(--primary)" },
   ".cm-activeLine": { backgroundColor: "transparent" },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
-    backgroundColor: "color-mix(in srgb, var(--primary) 28%, transparent)",
-  },
-  // The vim block cursor.
+  // Translucent, so the character shows through rather than being repainted.
+  // The package fills it opaque at highest precedence, hence `!important`.
   ".cm-fat-cursor": {
-    backgroundColor: "color-mix(in srgb, var(--primary) 45%, transparent) !important",
+    background: "color-mix(in srgb, var(--primary) 45%, transparent) !important",
     outline: "1px solid color-mix(in srgb, var(--primary) 60%, transparent)",
+  },
+  "&:not(.cm-focused) .cm-fat-cursor": {
+    background: "none !important",
+    outline: "1px solid color-mix(in srgb, var(--primary) 45%, transparent)",
   },
   ".cm-placeholder": { color: "var(--muted-foreground)", fontStyle: "normal" },
 
@@ -149,6 +152,7 @@ export function CodeMirrorPromptEditor({
 }: ComposerPromptEditorProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const setVimMode = useVimStateStore((state) => state.setMode);
   // Latest props for the extensions, which are built once and must not close
   // over a stale render.
   const latest = useRef({ onChange, onCommandKeyDown, terminalContexts, value, cursor });
@@ -184,6 +188,11 @@ export function CodeMirrorPromptEditor({
           // Must come first: vim rebinds keys the other extensions register.
           vim(),
           relativeLineNumbers(),
+          // Relative numbers depend on the cursor, but the gutter only
+          // recomputes on doc/viewport changes or when a gutter line class
+          // changes — not on selection. This supplies a class that tracks the
+          // active line, which is what makes moving the cursor redraw them.
+          highlightActiveLineGutter(),
           markdown(),
           syntaxHighlighting(markdownHighlightStyle),
           markdownConceal(),
@@ -220,12 +229,28 @@ export function CodeMirrorPromptEditor({
     });
     viewRef.current = view;
 
+    // The app needs to know which mode the editor is in — to show it, and to
+    // decide whether a key like <Space> is the leader or a literal space.
+    // Subscribe to the editor rather than inferring it from the DOM: mode
+    // changes on keystrokes, which fire no event the app would otherwise see.
+    const cm = getCM(view);
+    const onModeChange = (event: { mode: string }) => {
+      setVimMode(
+        event.mode === "insert" ? "insert" : event.mode.startsWith("visual") ? "visual" : "normal",
+      );
+    };
+    cm?.on("vim-mode-change", onModeChange);
+    // CodeMirror starts in normal mode; say so rather than leaving the app on
+    // whatever the last non-editor focus implied.
+    setVimMode("normal");
+
     return () => {
+      cm?.off("vim-mode-change", onModeChange);
       view.destroy();
       viewRef.current = null;
     };
     // Built once; prop changes are applied through dispatches below.
-  }, [disabled]);
+  }, [disabled, setVimMode]);
 
   // Controlled value: only dispatch when the document genuinely differs, so
   // typing does not round-trip through React and fight the cursor.

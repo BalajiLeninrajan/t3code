@@ -515,6 +515,7 @@ export function vimKeyFromEvent(event: VimKeyEventLike): string | null {
   }
 
   if (event.key === "Escape") return "<Esc>";
+  if (event.key === "Backspace") return "<BS>";
   if (event.key === " ") return VIM_LEADER;
   if (event.key === "Enter") return "<CR>";
   if (event.key.length !== 1) return null;
