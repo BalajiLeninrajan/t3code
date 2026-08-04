@@ -18,6 +18,7 @@ import {
   terminalLinkAtColumn,
   terminalLinkAtPosition,
   terminalContentOriginY,
+  terminalCursorBox,
   terminalFontFamily,
   terminalFontSize,
   terminalWheelArrowData,
@@ -403,5 +404,45 @@ describe("terminal scrollbar", () => {
       maxOffset: 9_980,
     });
     expect(terminalScrollbarOffsetAtPointer(state, 200, 191, 9)).toBe(9_980);
+  });
+});
+
+describe("terminalCursorBox", () => {
+  const metrics = { width: 8, height: 16, baseline: 12 };
+
+  it("gives shaders the block cursor the renderer paints", () => {
+    expect(
+      terminalCursorBox({
+        cursorX: 3,
+        cursorY: 2,
+        cursorStyle: 1,
+        metrics,
+        padding: 4,
+        originY: 4,
+      }),
+    ).toEqual({ left: 28, top: 36, width: 8, height: 16 });
+  });
+
+  it("narrows to the bar and underline shapes for those cursor styles", () => {
+    expect(
+      terminalCursorBox({
+        cursorX: 0,
+        cursorY: 0,
+        cursorStyle: 0,
+        metrics,
+        padding: 4,
+        originY: 4,
+      }),
+    ).toEqual({ left: 4, top: 4, width: 2, height: 16 });
+    expect(
+      terminalCursorBox({
+        cursorX: 0,
+        cursorY: 0,
+        cursorStyle: 2,
+        metrics,
+        padding: 4,
+        originY: 4,
+      }),
+    ).toEqual({ left: 4, top: 18, width: 8, height: 2 });
   });
 });

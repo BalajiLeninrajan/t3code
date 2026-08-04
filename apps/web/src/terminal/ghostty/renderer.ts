@@ -98,6 +98,8 @@ export function renderGhosttySnapshot(options: {
   readonly previousCursorY?: number | null;
   readonly focused?: boolean;
   readonly selectionBackground?: string;
+  /** Text color under a block cursor; defaults to the terminal background. */
+  readonly cursorText?: string;
   /** Vertical origin of row 0; defaults to the horizontal padding. */
   readonly originY?: number;
 }): void {
@@ -247,7 +249,7 @@ export function renderGhosttySnapshot(options: {
       const cell = snapshot.rowData[snapshot.cursorY]?.cells[snapshot.cursorX];
       if (cell?.text) {
         context.font = fontForCell(cell, fontSize, fontFamily);
-        context.fillStyle = cssColor(snapshot.background);
+        context.fillStyle = options.cursorText ?? cssColor(snapshot.background);
         context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
       }
     }

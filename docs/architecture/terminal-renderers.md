@@ -26,6 +26,21 @@ and memory. Each visible terminal owns and frees its own terminal, render state,
 iterator, key and mouse encoder, and input event handles. Restoring captured scrollback temporarily
 detaches the PTY callback so historical device queries cannot emit replies into the current shell.
 
+## Host appearance
+
+When the server host has Ghostty installed, `ghostty +show-config` resolves that user's colors,
+font, and `custom-shader` entries — themes and includes already applied — and the result rides
+along on `ServerConfig` as `terminalAppearance`. Web and desktop apply it: colors and the indexed
+palette go to Ghostty through the terminal options, the font list becomes the canvas font, and each
+shader source is compiled into a WebGL2 post-process pass over the Canvas 2D frame with Ghostty's
+Shadertoy-style uniforms, including the cursor rectangles trail shaders animate between.
+
+Two source rewrites keep desktop-GL shaders compiling as GLSL ES: globals initialized from a
+uniform move into the entry point, and a shader's own overload of a built-in name is renamed along
+with its same-arity calls. A shader that still fails to compile is dropped with a console warning
+and the plain Canvas 2D output stays on screen. Shader animation follows Ghostty's
+`custom-shader-animation`, and reduced-motion readers never get an animation loop.
+
 ## Updating Ghostty
 
 Update and rebuild Android first, because mobile's `VERSION` file is the single source of truth for

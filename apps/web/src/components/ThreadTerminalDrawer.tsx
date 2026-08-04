@@ -38,6 +38,12 @@ import {
   type GhosttyTerminalSurfaceOptions,
 } from "~/terminal/ghostty/surface";
 import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
+import {
+  terminalFontFromHost,
+  terminalHostAppearanceKey,
+  terminalShadersFromHost,
+  terminalThemeFromHostColors,
+} from "~/terminal/ghostty/hostAppearance";
 import { useOpenInPreferredEditor } from "../editorPreferences";
 import { isTerminalLinkActivation, resolvePathLinkTarget } from "../terminal-links";
 import {
@@ -281,6 +287,17 @@ export function TerminalViewport({
     serverConfig?.availableEditors ?? [],
   );
   const openTerminalPath = useEffectEvent((target: string) => openInPreferredEditor(target));
+  // The host's own Ghostty config wins over the app palette when the server can
+  // read one, so in-app terminals match the terminal the user already uses.
+  const hostAppearance = serverConfig?.terminalAppearance;
+  const hostAppearanceKey = terminalHostAppearanceKey(hostAppearance);
+  const readTerminalTheme = useEffectEvent((mount?: HTMLElement | null): GhosttyTheme => {
+    const hostColors = hostAppearance?.colors;
+    const hostTheme = hostColors ? terminalThemeFromHostColors(hostColors) : null;
+    return hostTheme ?? terminalThemeFromApp(mount);
+  });
+  const readTerminalFont = useEffectEvent(() => terminalFontFromHost(hostAppearance));
+  const readTerminalShaders = useEffectEvent(() => terminalShadersFromHost(hostAppearance));
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
@@ -379,7 +396,9 @@ export function TerminalViewport({
 
     const setup = async (): Promise<(() => void) | null> => {
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
-        theme: terminalThemeFromApp(mount),
+        theme: readTerminalTheme(mount),
+        font: readTerminalFont(),
+        shaders: readTerminalShaders(),
         onData: (data) => handleData(data),
         onResize: (cols, rows) => void resizeTerminal(cols, rows),
         onSelectionChange: () => handleSelectionChange(),
@@ -394,7 +413,7 @@ export function TerminalViewport({
       }
       // The theme observer is not installed yet, so re-read the theme in case
       // the app toggled light/dark while the WASM surface was loading.
-      terminal.setTheme(terminalThemeFromApp(mount));
+      terminal.setTheme(readTerminalTheme(mount));
       setupTerminal = terminal;
       terminalRef.current = terminal;
       const latestSession = latestSessionRef.current;
@@ -666,7 +685,7 @@ export function TerminalViewport({
       const themeObserver = new MutationObserver(() => {
         const activeTerminal = terminalRef.current;
         if (!activeTerminal) return;
-        activeTerminal.setTheme(terminalThemeFromApp(containerRef.current));
+        activeTerminal.setTheme(readTerminalTheme(containerRef.current));
       });
       themeObserver.observe(document.documentElement, {
         attributes: true,
@@ -722,6 +741,16 @@ export function TerminalViewport({
     // autoFocus is intentionally omitted;
     // it is only read at mount time and must not trigger terminal teardown/recreation.
   }, [cwd, environmentId, runtimeEnvKey, terminalId, threadId, worktreePath]);
+
+  // Editing the host's Ghostty config restyles live terminals; a fresh surface
+  // already picks the current appearance up during setup.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.setTheme(readTerminalTheme(containerRef.current));
+    terminal.setShaders(readTerminalShaders());
+    void terminal.setFont(readTerminalFont());
+  }, [hostAppearanceKey, readTerminalFont, readTerminalShaders, readTerminalTheme]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

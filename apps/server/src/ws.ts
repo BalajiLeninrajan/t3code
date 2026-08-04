@@ -85,6 +85,8 @@ import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
+import { resolveGhosttyTerminalAppearance } from "./terminal/GhosttyAppearance.ts";
+import * as ProcessRunner from "./processRunner.ts";
 import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -976,6 +978,14 @@ const makeWsRpcLayer = (
           );
       };
 
+      // Probing Ghostty spawns a process, and config loads fan out to every
+      // connected client, so the answer is reused across a burst of loads while
+      // still picking up an edited Ghostty config without a server restart.
+      const loadTerminalAppearance = yield* Effect.cachedWithTTL(
+        resolveGhosttyTerminalAppearance().pipe(Effect.orElseSucceed(() => undefined)),
+        "30 seconds",
+      );
+
       const loadServerConfig = Effect.gen(function* () {
         const keybindingsConfig = yield* keybindings.loadConfigState;
         const providers = yield* providerRegistry.getProviders;
@@ -984,6 +994,7 @@ const makeWsRpcLayer = (
         );
         const environment = yield* serverEnvironment.getDescriptor;
         const auth = yield* serverAuth.getDescriptor();
+        const terminalAppearance = yield* loadTerminalAppearance;
 
         return {
           environment,
@@ -1007,6 +1018,7 @@ const makeWsRpcLayer = (
             otlpMetricsEnabled: config.otlpMetricsUrl !== undefined,
           },
           settings,
+          ...(terminalAppearance !== undefined ? { terminalAppearance } : {}),
           shellResumeCompletionMarker: true,
           threadResumeCompletionMarker: true,
         };
@@ -2130,6 +2142,7 @@ export const websocketRpcRouteLayer = Layer.unwrap(
           Effect.provide(
             makeWsRpcLayer(session, previewAutomationBroker).pipe(
               Layer.provideMerge(RpcSerialization.layerJson),
+              Layer.provide(ProcessRunner.layer),
               Layer.provide(ProviderMaintenanceRunner.layer),
               Layer.provide(Layer.succeed(ServerSelfUpdate.ServerSelfUpdate, serverSelfUpdate)),
               Layer.provide(
