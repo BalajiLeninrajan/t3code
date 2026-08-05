@@ -12,7 +12,25 @@
  * moment focus would move, not state a component renders from.
  */
 import { getClientSettings } from "../hooks/useSettings";
+import { focusRegion } from "./vimRegions";
+import { useVimStateStore } from "./vimState";
 
 export function isComposerAutoFocusSuppressed(): boolean {
   return getClientSettings().vimMode;
+}
+
+/**
+ * Where focus goes in vim mode when something on screen goes away — closing
+ * the terminal drawer, most of all. Suppressing the composer's auto-focus
+ * cannot be the whole answer there: the surface holding focus is unmounting,
+ * so declining to move focus leaves the keyboard on `<body>` with no window to
+ * act on. Chat is the window underneath, and normal mode is where `i` starts.
+ *
+ * Returns false when it did not apply, so callers keep their own behaviour.
+ */
+export function focusChatWindow(): boolean {
+  if (!getClientSettings().vimMode) return false;
+  if (!focusRegion("chat")) return false;
+  useVimStateStore.getState().setRegion("chat");
+  return true;
 }

@@ -675,6 +675,13 @@ export const useTerminalUiStateStore = create<TerminalUiStateStoreState>()(
               }
               if (options?.open) {
                 nextState = setThreadTerminalOpen(nextState, true);
+              } else if (nextState.terminalOpen !== state.terminalOpen) {
+                // Registering a terminal is not the same as showing the drawer.
+                // `newThreadTerminal` opens it because that is what the drawer's
+                // own new-terminal button means, but a caller that renders the
+                // terminal somewhere else — the composer's `$EDITOR` session —
+                // asks for neither, and gets the drawer anyway without this.
+                nextState = { ...nextState, terminalOpen: state.terminalOpen };
               }
               return normalizeThreadTerminalUiState(nextState);
             },

@@ -285,7 +285,7 @@ import {
 import type { ThreadSyncPhase } from "../threadSync";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useComposerHandleContext } from "../composerHandleContext";
-import { isComposerAutoFocusSuppressed } from "../vim/autoFocus";
+import { focusChatWindow, isComposerAutoFocusSuppressed } from "../vim/autoFocus";
 import { sanitizeThreadErrorMessage } from "~/rpc/transportError";
 import { RightPanelSheet } from "./RightPanelSheet";
 import { previewEnvironment } from "../state/preview";
@@ -4524,6 +4524,10 @@ function ChatViewContent(props: ChatViewProps) {
     } else if (previous && !current) {
       terminalUiOpenByThreadRef.current[activeThreadKey] = current;
       const frame = window.requestAnimationFrame(() => {
+        // The drawer just unmounted, taking focus with it, so somewhere has to
+        // take it: the composer normally, the chat window in vim mode, where
+        // the composer is entered with `i` rather than handed to you.
+        if (focusChatWindow()) return;
         focusComposer();
       });
       return () => {
