@@ -19,7 +19,7 @@ import { activateControl } from "./appControls";
 import { focusModelPickerSearch, modelPickerElement, moveModelPickerProvider } from "./modelPicker";
 import { useClientSettings } from "../hooks/useSettings";
 import { isPreviewFocused } from "../lib/previewFocus";
-import { isTerminalFocused } from "../lib/terminalFocus";
+import { getTerminalFocusOwner, isTerminalFocused } from "../lib/terminalFocus";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { isReplayingKeybinding, runKeybindingCommand } from "./runKeybindingCommand";
 import { VimCheatSheet } from "./VimCheatSheet";
@@ -221,9 +221,8 @@ export function VimNavigation() {
         return;
 
       case "insert": {
-        // In the terminal, insert means terminal mode. ⌘J (`<leader>ft`)
-        // closes the drawer and hands focus back — the same way out nvim's
-        // terminal buffers need a deliberate chord.
+        // In the terminal, insert means terminal mode; Escape leaves it again,
+        // and ⌘J (`<leader>ft`) closes the drawer outright.
         if (region === "terminal") {
           terminalInput()?.focus({ preventScroll: true });
           return;
@@ -317,11 +316,21 @@ export function VimNavigation() {
         return;
       }
 
-      // A focused terminal owns every key. Whatever is running in it — a
-      // shell, or the editor the composer opened — has its own idea of what
-      // Escape and `:` mean, and both are keys it cannot do without. Getting
-      // out is a deliberate chord, handled by the keybinding layer, not here.
-      if (isTerminalFocused()) return;
+      // A focused terminal owns every key. Whatever is running in it has its
+      // own idea of what Escape and `:` mean, and both are keys it cannot do
+      // without.
+      //
+      // The drawer is the exception, because it is a window you visit rather
+      // than a program you are inside: Escape leaves terminal mode there and
+      // falls through to the insert-mode handler below, the way ⌃\⌃n does in
+      // nvim's terminal buffer. ⌃[ still reaches the shell as a literal
+      // Escape, which is the way out for anything that genuinely needs one.
+      // The composer's editor keeps every key — Escape is the whole point of
+      // opening your own vim in there.
+      const terminalOwner = getTerminalFocusOwner();
+      if (terminalOwner !== null && !(terminalOwner === "drawer" && event.key === "Escape")) {
+        return;
+      }
 
       const { pending, setPending, clearPending } = useVimStateStore.getState();
       const key = vimKeyFromEvent(event);
@@ -393,8 +402,9 @@ export function VimNavigation() {
       const activeMode = modeForActiveElement();
 
       if (activeMode === "insert") {
-        // Escape (and vim's ⌃[) leaves a text field outright. A focused
-        // terminal never reaches here — it returned above with every key.
+        // Escape (and vim's ⌃[) leaves a text field outright. The drawer's
+        // terminal arrives here too, and leaving it means the same thing:
+        // focus parks on the drawer window in normal mode.
         if (key !== "<Esc>") return;
         const active = document.activeElement;
         if (!(active instanceof HTMLElement)) return;

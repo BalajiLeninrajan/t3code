@@ -154,6 +154,34 @@ describe("terminalUiStateStore actions", () => {
     ]);
   });
 
+  it("registers a terminal without showing the drawer when open is not asked for", () => {
+    const store = useTerminalUiStateStore.getState();
+    store.ensureTerminal(THREAD_REF, "term-2", { active: false });
+
+    const terminalUiState = selectThreadTerminalUiState(
+      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+      THREAD_REF,
+    );
+    // The composer's `$EDITOR` session renders its terminal in place of the
+    // prompt box, so registering the id must not drag the drawer open with it.
+    expect(terminalUiState.terminalOpen).toBe(false);
+    expect(terminalUiState.terminalIds).toEqual(["term-2"]);
+    expect(terminalUiState.activeTerminalId).toBe("term-2");
+  });
+
+  it("leaves an already open drawer open when ensuring a background terminal", () => {
+    const store = useTerminalUiStateStore.getState();
+    store.setTerminalOpen(THREAD_REF, true);
+    store.ensureTerminal(THREAD_REF, "term-2", { active: false });
+
+    const terminalUiState = selectThreadTerminalUiState(
+      useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+      THREAD_REF,
+    );
+    expect(terminalUiState.terminalOpen).toBe(true);
+    expect(terminalUiState.activeTerminalId).toBe(DEFAULT_THREAD_TERMINAL_ID);
+  });
+
   it("keeps state isolated per environment when raw thread ids collide", () => {
     const store = useTerminalUiStateStore.getState();
     store.setTerminalOpen(THREAD_REF, true);
