@@ -3,7 +3,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   terminalFontFromHost,
   terminalHostAppearanceKey,
-  terminalShadersFromHost,
   terminalThemeFromHostColors,
 } from "./hostAppearance";
 
@@ -18,10 +17,6 @@ const appearance = {
   },
   fontFamilies: ["JetBrainsMono Nerd Font"],
   fontSize: 12,
-  shaders: [
-    { path: "/shaders/cursor_warp.glsl", source: "void mainImage(out vec4 c, in vec2 p){}" },
-  ],
-  shaderAnimation: "true",
 } as const;
 
 describe("terminalThemeFromHostColors", () => {
@@ -64,23 +59,11 @@ describe("terminalFontFromHost", () => {
   });
 });
 
-describe("terminalShadersFromHost", () => {
-  it("defaults to Ghostty's focused-only animation when no host config exists", () => {
-    expect(terminalShadersFromHost(undefined)).toEqual({ sources: [], animation: "true" });
-  });
-
-  it("passes the host shader chain through", () => {
-    expect(terminalShadersFromHost(appearance).sources).toHaveLength(1);
-  });
-});
-
 describe("terminalHostAppearanceKey", () => {
-  it("changes when a shader file is edited without changing length", () => {
+  it("changes when the host edits a color", () => {
     const edited = {
       ...appearance,
-      shaders: [
-        { path: "/shaders/cursor_warp.glsl", source: "void mainImage(out vec4 d, in vec2 p){}" },
-      ],
+      colors: { ...appearance.colors, background: "#181825" },
     };
 
     expect(terminalHostAppearanceKey(edited)).not.toBe(terminalHostAppearanceKey(appearance));

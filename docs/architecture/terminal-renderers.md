@@ -28,18 +28,29 @@ detaches the PTY callback so historical device queries cannot emit replies into 
 
 ## Host appearance
 
-When the server host has Ghostty installed, `ghostty +show-config` resolves that user's colors,
-font, and `custom-shader` entries — themes and includes already applied — and the result rides
-along on `ServerConfig` as `terminalAppearance`. Web and desktop apply it: colors and the indexed
-palette go to Ghostty through the terminal options, the font list becomes the canvas font, and each
-shader source is compiled into a WebGL2 post-process pass over the Canvas 2D frame with Ghostty's
-Shadertoy-style uniforms, including the cursor rectangles trail shaders animate between.
+When the server host has Ghostty installed, `ghostty +show-config` resolves that user's colors and
+font — themes and includes already applied — and the result rides along on `ServerConfig` as
+`terminalAppearance`. Web and desktop apply it: colors and the indexed palette go to Ghostty through
+the terminal options, and the font list becomes the canvas font.
 
-Two source rewrites keep desktop-GL shaders compiling as GLSL ES: globals initialized from a
-uniform move into the entry point, and a shader's own overload of a built-in name is renamed along
-with its same-arity calls. A shader that still fails to compile is dropped with a console warning
-and the plain Canvas 2D output stays on screen. Shader animation follows Ghostty's
-`custom-shader-animation`, and reduced-motion readers never get an animation loop.
+`custom-shader` is deliberately not honored. Reproducing Ghostty's Shadertoy post-process meant
+compositing an opaque WebGL2 overlay over the Canvas 2D grid and rewriting desktop-GL sources into
+GLSL ES, which was a persistent source of rendering artifacts for a purely decorative feature.
+
+## Drawn glyphs
+
+`libghostty-vt` gives us terminal state, not pixels: Ghostty's own renderer is Metal or OpenGL over
+a CoreText atlas, and none of it crosses the C ABI. So the grid is ours to paint, and the characters
+that have to tile — box drawing, block elements, braille, powerline separators, sextants and octants
+— cannot come from a font. Their glyphs are cut for the line height their face assumes, so at any
+other cell size a rule stops short of its neighbour and a separator leaves a seam against the
+segment behind it. Every terminal that looks right draws these itself; we vendor xterm.js's
+rasterizer to do it, under `apps/web/src/terminal/ghostty/vendor/xterm-custom-glyphs`, which has its
+own README covering provenance and coverage.
+
+It wants a canvas addressed in device pixels, so `renderer.ts` drops the ratio transform for the
+call and scales the cell rect up to match. Anything it has no drawing for falls back to the font,
+scaled down uniformly if it overflows its cell.
 
 ## Updating Ghostty
 

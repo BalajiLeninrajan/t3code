@@ -1,9 +1,4 @@
-import type {
-  TerminalHostAppearance,
-  TerminalHostColors,
-  TerminalHostShader,
-  TerminalHostShaderAnimation,
-} from "@t3tools/contracts";
+import type { TerminalHostAppearance, TerminalHostColors } from "@t3tools/contracts";
 import { HostProcessEnvironment, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { resolveCommandPath } from "@t3tools/shared/shell";
 import * as Effect from "effect/Effect";
@@ -16,9 +11,6 @@ import * as ProcessRunner from "../processRunner.ts";
 const SHOW_CONFIG_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 const SHOW_CONFIG_TIMEOUT = "5 seconds";
 const MAX_FONT_FAMILIES = 16;
-const MAX_SHADERS = 8;
-/** Matches the contract's per-shader source limit. */
-const MAX_SHADER_BYTES = 262_144;
 
 export class GhosttyShowConfigError extends Schema.TaggedErrorClass<GhosttyShowConfigError>()(
   "GhosttyShowConfigError",
@@ -32,24 +24,10 @@ export class GhosttyShowConfigError extends Schema.TaggedErrorClass<GhosttyShowC
   }
 }
 
-export class GhosttyShaderReadError extends Schema.TaggedErrorClass<GhosttyShaderReadError>()(
-  "GhosttyShaderReadError",
-  {
-    path: Schema.String,
-    cause: Schema.Defect(),
-  },
-) {
-  override get message(): string {
-    return `Failed to read the Ghostty custom shader at ${this.path}.`;
-  }
-}
-
 export interface GhosttyConfigValues {
   readonly fontFamilies: readonly string[];
   readonly fontSize: number | undefined;
   readonly colors: TerminalHostColors | undefined;
-  readonly shaderPaths: readonly string[];
-  readonly shaderAnimation: TerminalHostShaderAnimation;
 }
 
 function unquote(value: string): string {
@@ -90,7 +68,6 @@ function densePalette(entries: ReadonlyMap<number, string>): readonly string[] {
  */
 export function parseGhosttyShowConfig(stdout: string): GhosttyConfigValues {
   const fontFamilies: string[] = [];
-  const shaderPaths: string[] = [];
   const paletteEntries = new Map<number, string>();
   let fontSize: number | undefined;
   let background: string | undefined;
@@ -98,7 +75,6 @@ export function parseGhosttyShowConfig(stdout: string): GhosttyConfigValues {
   let cursor: string | undefined;
   let cursorText: string | undefined;
   let selectionBackground: string | undefined;
-  let shaderAnimation: TerminalHostShaderAnimation = "true";
 
   for (const line of stdout.split(/\r?\n/g)) {
     const trimmed = line.trim();
@@ -151,16 +127,6 @@ export function parseGhosttyShowConfig(stdout: string): GhosttyConfigValues {
         }
         break;
       }
-      case "custom-shader": {
-        if (shaderPaths.length < MAX_SHADERS && !shaderPaths.includes(value)) {
-          shaderPaths.push(value);
-        }
-        break;
-      }
-      case "custom-shader-animation": {
-        if (value === "false" || value === "true" || value === "always") shaderAnimation = value;
-        break;
-      }
       default:
         break;
     }
@@ -180,7 +146,7 @@ export function parseGhosttyShowConfig(stdout: string): GhosttyConfigValues {
         }
       : undefined;
 
-  return { fontFamilies, fontSize, colors, shaderPaths, shaderAnimation };
+  return { fontFamilies, fontSize, colors };
 }
 
 /**
@@ -249,31 +215,6 @@ const runShowConfig = Effect.fn("ghosttyAppearance.showConfig")(function* (execu
   return result.stdout;
 });
 
-const readShaderSources = Effect.fn("ghosttyAppearance.readShaders")(function* (
-  paths: readonly string[],
-) {
-  const fileSystem = yield* FileSystem.FileSystem;
-  const shaders: TerminalHostShader[] = [];
-  for (const path of paths) {
-    const source = yield* fileSystem.readFileString(path).pipe(
-      Effect.mapError((cause) => new GhosttyShaderReadError({ path, cause })),
-      Effect.catchTag("GhosttyShaderReadError", (error) =>
-        Effect.logDebug(error.message).pipe(
-          Effect.annotateLogs({ path: error.path, cause: error }),
-          Effect.as(undefined),
-        ),
-      ),
-    );
-    if (source === undefined || source.trim().length === 0) continue;
-    if (Buffer.byteLength(source, "utf8") > MAX_SHADER_BYTES) {
-      yield* Effect.logDebug(`Skipping oversized Ghostty custom shader at ${path}.`);
-      continue;
-    }
-    shaders.push({ path, source });
-  }
-  return shaders;
-});
-
 /**
  * Resolve the host's Ghostty appearance for clients. Returns undefined whenever
  * Ghostty is absent or its config yields nothing a client could apply, which
@@ -288,17 +229,12 @@ export const resolveGhosttyTerminalAppearance = Effect.fn("ghosttyAppearance.res
     if (stdout === undefined) return undefined;
 
     const parsed = parseGhosttyShowConfig(stdout);
-    const shaders = yield* readShaderSources(parsed.shaderPaths);
-    if (parsed.colors === undefined && parsed.fontFamilies.length === 0 && shaders.length === 0) {
-      return undefined;
-    }
+    if (parsed.colors === undefined && parsed.fontFamilies.length === 0) return undefined;
 
     return {
       fontFamilies: parsed.fontFamilies,
       ...(parsed.fontSize !== undefined ? { fontSize: parsed.fontSize } : {}),
       ...(parsed.colors !== undefined ? { colors: parsed.colors } : {}),
-      shaders,
-      shaderAnimation: parsed.shaderAnimation,
     } satisfies TerminalHostAppearance;
   },
 );

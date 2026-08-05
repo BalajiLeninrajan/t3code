@@ -1,12 +1,12 @@
 import type { TerminalHostAppearance, TerminalHostColors } from "@t3tools/contracts";
 import type { GhosttyColor, GhosttyTheme } from "./core";
-import type { GhosttyTerminalFont, GhosttyTerminalShaders } from "./surface";
+import type { GhosttyTerminalFont } from "./surface";
 
 /**
  * Maps the host's Ghostty config onto the web terminal. The server resolves the
  * config past themes and includes, so everything here is a straight
- * translation: hex colors into Ghostty's RGB triples, font names into a CSS
- * family list, and custom shaders into the surface's shader chain.
+ * translation: hex colors into Ghostty's RGB triples and font names into a CSS
+ * family list.
  */
 
 function parseHexColor(value: string): GhosttyColor | null {
@@ -35,16 +35,6 @@ export function terminalThemeFromHostColors(colors: TerminalHostColors): Ghostty
   };
 }
 
-/** Order-sensitive 32-bit hash, enough to notice an edited shader file. */
-function hashSource(source: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < source.length; index += 1) {
-    hash ^= source.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0).toString(36);
-}
-
 /** CSS needs quotes around any family that is not a bare identifier. */
 function cssFontFamily(family: string): string {
   const trimmed = family.trim();
@@ -60,15 +50,6 @@ export function terminalFontFromHost(
   return {
     ...(family.length > 0 ? { family } : {}),
     ...(appearance?.fontSize !== undefined ? { size: appearance.fontSize } : {}),
-  };
-}
-
-export function terminalShadersFromHost(
-  appearance: TerminalHostAppearance | undefined,
-): GhosttyTerminalShaders {
-  return {
-    sources: appearance?.shaders ?? [],
-    animation: appearance?.shaderAnimation ?? "true",
   };
 }
 
@@ -90,7 +71,5 @@ export function terminalHostAppearanceKey(
     colors?.palette.join(",") ?? "",
     appearance.fontFamilies.join(","),
     appearance.fontSize ?? "",
-    appearance.shaderAnimation,
-    appearance.shaders.map((shader) => `${shader.path}:${hashSource(shader.source)}`).join(","),
   ].join("|");
 }

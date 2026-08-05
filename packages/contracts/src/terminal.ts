@@ -104,17 +104,6 @@ export const TerminalHostColors = Schema.Struct({
 });
 export type TerminalHostColors = typeof TerminalHostColors.Type;
 
-/** One `custom-shader` entry, shipped with its source so clients need no host filesystem. */
-export const TerminalHostShader = Schema.Struct({
-  path: TrimmedNonEmptyStringSchema,
-  source: Schema.String.check(Schema.isNonEmpty()).check(Schema.isMaxLength(262_144)),
-});
-export type TerminalHostShader = typeof TerminalHostShader.Type;
-
-/** Ghostty's `custom-shader-animation`: never, while focused, or always. */
-export const TerminalHostShaderAnimation = Schema.Literals(["false", "true", "always"]);
-export type TerminalHostShaderAnimation = typeof TerminalHostShaderAnimation.Type;
-
 /**
  * The terminal appearance of the machine running the server, resolved from the
  * host's Ghostty config so in-app terminals look like the user's own terminal.
@@ -125,8 +114,6 @@ export const TerminalHostAppearance = Schema.Struct({
   /** CSS font list, most preferred first. */
   fontFamilies: Schema.Array(TrimmedNonEmptyStringSchema).check(Schema.isMaxLength(16)),
   fontSize: Schema.optionalKey(Schema.Number.check(Schema.isGreaterThan(0))),
-  shaders: Schema.Array(TerminalHostShader).check(Schema.isMaxLength(8)),
-  shaderAnimation: TerminalHostShaderAnimation,
 });
 export type TerminalHostAppearance = typeof TerminalHostAppearance.Type;
 

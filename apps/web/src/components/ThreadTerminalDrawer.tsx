@@ -41,7 +41,6 @@ import { type GhosttyColor, type GhosttyTheme } from "~/terminal/ghostty/core";
 import {
   terminalFontFromHost,
   terminalHostAppearanceKey,
-  terminalShadersFromHost,
   terminalThemeFromHostColors,
 } from "~/terminal/ghostty/hostAppearance";
 import { useOpenInPreferredEditor } from "../editorPreferences";
@@ -297,7 +296,6 @@ export function TerminalViewport({
     return hostTheme ?? terminalThemeFromApp(mount);
   });
   const readTerminalFont = useEffectEvent(() => terminalFontFromHost(hostAppearance));
-  const readTerminalShaders = useEffectEvent(() => terminalShadersFromHost(hostAppearance));
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
@@ -398,7 +396,6 @@ export function TerminalViewport({
       const terminalOptions: GhosttyTerminalSurfaceOptions = {
         theme: readTerminalTheme(mount),
         font: readTerminalFont(),
-        shaders: readTerminalShaders(),
         onData: (data) => handleData(data),
         onResize: (cols, rows) => void resizeTerminal(cols, rows),
         onSelectionChange: () => handleSelectionChange(),
@@ -748,9 +745,8 @@ export function TerminalViewport({
     const terminal = terminalRef.current;
     if (!terminal) return;
     terminal.setTheme(readTerminalTheme(containerRef.current));
-    terminal.setShaders(readTerminalShaders());
     void terminal.setFont(readTerminalFont());
-  }, [hostAppearanceKey, readTerminalFont, readTerminalShaders, readTerminalTheme]);
+  }, [hostAppearanceKey, readTerminalFont, readTerminalTheme]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

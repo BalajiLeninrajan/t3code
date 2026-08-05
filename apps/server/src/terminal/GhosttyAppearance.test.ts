@@ -22,7 +22,7 @@ custom-shader = /home/user/.config/ghostty/shaders/cursor_warp.glsl
 `;
 
 describe("parseGhosttyShowConfig", () => {
-  it("reads the font, colors, palette, and shaders a web terminal can honor", () => {
+  it("reads the font, colors, and palette a web terminal can honor", () => {
     const parsed = parseGhosttyShowConfig(SHOW_CONFIG);
 
     assert.deepStrictEqual(parsed.fontFamilies, ["JetBrainsMono Nerd Font"]);
@@ -35,10 +35,6 @@ describe("parseGhosttyShowConfig", () => {
       selectionBackground: "#585b70",
       palette: ["#45475a", "#f38ba8", "#a6e3a1"],
     });
-    assert.deepStrictEqual(parsed.shaderPaths, [
-      "/home/user/.config/ghostty/shaders/cursor_warp.glsl",
-    ]);
-    assert.strictEqual(parsed.shaderAnimation, "true");
   });
 
   it("keeps the app theme when the config cannot supply a full color pair", () => {
@@ -63,17 +59,12 @@ describe("parseGhosttyShowConfig", () => {
 
   it("ignores values it cannot use rather than reporting a broken appearance", () => {
     const parsed = parseGhosttyShowConfig(
-      [
-        "# a comment",
-        "background = not-a-color",
-        "foreground = #ffffff",
-        "font-size = huge",
-        "custom-shader-animation = always",
-      ].join("\n"),
+      ["# a comment", "background = not-a-color", "foreground = #ffffff", "font-size = huge"].join(
+        "\n",
+      ),
     );
 
     assert.strictEqual(parsed.colors, undefined);
     assert.strictEqual(parsed.fontSize, undefined);
-    assert.strictEqual(parsed.shaderAnimation, "always");
   });
 });

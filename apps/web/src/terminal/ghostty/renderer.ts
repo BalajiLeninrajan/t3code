@@ -5,11 +5,22 @@ import {
   type GhosttyColor,
   type GhosttySnapshot,
 } from "./core";
+import { tryDrawCustomGlyph } from "./vendor/xterm-custom-glyphs/CustomGlyphRasterizer";
 
 export interface GhosttyCellMetrics {
   readonly width: number;
   readonly height: number;
   readonly baseline: number;
+  /** Ink height of the face, without the line-height padding in `height`. */
+  readonly charHeight: number;
+}
+
+/** The cell rectangle a glyph occupies, in the context's own coordinates. */
+export interface GhosttyCellBox {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 const DEFAULT_SELECTION_BACKGROUND = "rgba(72, 122, 191, 0.35)";
@@ -55,6 +66,126 @@ function fontForCell(cell: GhosttyCell, fontSize: number, fontFamily: string): s
   return `${style} ${weight} ${fontSize}px ${fontFamily}`;
 }
 
+/**
+ * Text the primary monospace face renders at exactly one cell per character.
+ * Anything else — Nerd Font symbols, box drawing, CJK, emoji — resolves through
+ * a fallback face whose advance need not match the cell the grid reserved.
+ */
+const PRIMARY_FACE_TEXT = /^[\u0020-\u007e\u00a0-\u017f]+$/;
+
+/** The cell plus the spacer tails a wide glyph occupies. */
+function ghosttyCellSpanEnd(cells: readonly GhosttyCell[], start: number): number {
+  let end = start + 1;
+  while (end < cells.length && cells[end]?.wide === GHOSTTY_CELL_WIDE.spacerTail) end += 1;
+  return end;
+}
+
+/** The same handful of glyphs recur every frame, and measuring them is not free. */
+const MAX_GLYPH_WIDTH_CACHE = 4096;
+const glyphWidths = new Map<string, number>();
+/** A character no font string contains, so the two halves of a key cannot merge. */
+const GLYPH_KEY_SEPARATOR = String.fromCodePoint(0);
+
+function measureGlyphWidth(context: CanvasRenderingContext2D, text: string): number {
+  const key = `${context.font}${GLYPH_KEY_SEPARATOR}${text}`;
+  const cached = glyphWidths.get(key);
+  if (cached !== undefined) return cached;
+  const width = context.measureText(text).width;
+  if (glyphWidths.size >= MAX_GLYPH_WIDTH_CACHE) glyphWidths.clear();
+  glyphWidths.set(key, width);
+  return width;
+}
+
+/** The rasterizer only reports drawings it has no instructions for. */
+const glyphLog = {
+  error: (message: unknown, ...rest: unknown[]) => {
+    console.error(message, ...rest);
+  },
+};
+
+/**
+ * Hand a cell to the vendored xterm.js rasterizer, which covers box drawing,
+ * block elements, braille, powerline separators, sextants and octants — the
+ * characters a terminal has to draw itself, because a font's own glyphs are cut
+ * for the line height that font assumes and so neither tile against their
+ * neighbours nor meet the segment behind them once the cell size differs.
+ *
+ * It expects a canvas addressed in device pixels, which is how it keeps lines
+ * crisp; ours carries the ratio as a transform instead, so the transform comes
+ * off for the call and the same rect goes in scaled up. The clip the caller set
+ * is held in device space and so survives untouched.
+ */
+function drawCellGeometry(
+  context: CanvasRenderingContext2D,
+  text: string,
+  box: GhosttyCellBox,
+  metrics: GhosttyCellMetrics,
+  fontSize: number,
+  scale: number,
+  background: string,
+): boolean {
+  context.save();
+  context.resetTransform();
+  const drawn = tryDrawCustomGlyph(
+    context,
+    text,
+    box.left * scale,
+    box.top * scale,
+    box.width * scale,
+    box.height * scale,
+    metrics.width * scale,
+    metrics.charHeight * scale,
+    fontSize * scale,
+    scale,
+    glyphLog,
+    background,
+  );
+  context.restore();
+  return drawn;
+}
+
+/**
+ * Draw one run's text inside the cells it occupies.
+ *
+ * Canvas's `maxWidth` condenses text horizontally only, so a glyph wider than
+ * its cell comes out as a stretched sliver rather than a smaller symbol — the
+ * common case being a Nerd Font icon whose fallback face advances wider than
+ * the cell width measured from the primary face. Runs that can only come from
+ * the primary face keep the cheap single-call path, where `maxWidth` is a no-op
+ * for a true monospace face and still holds the columns of a mis-measured one.
+ * Cell geometry is drawn rather than typeset, and every other fallback glyph is
+ * scaled on both axes and centered, so an icon shrinks rather than distorting.
+ */
+function drawCellText(
+  context: CanvasRenderingContext2D,
+  text: string,
+  box: GhosttyCellBox,
+  metrics: GhosttyCellMetrics,
+  fontSize: number,
+  scale: number,
+  background: string,
+): void {
+  if (PRIMARY_FACE_TEXT.test(text)) {
+    context.fillText(text, box.left, box.top + metrics.baseline, box.width);
+    return;
+  }
+  if (drawCellGeometry(context, text, box, metrics, fontSize, scale, background)) return;
+  const natural = measureGlyphWidth(context, text);
+  if (natural <= 0) {
+    context.fillText(text, box.left, box.top + metrics.baseline);
+    return;
+  }
+  if (natural <= box.width) {
+    context.fillText(text, box.left + (box.width - natural) / 2, box.top + metrics.baseline);
+    return;
+  }
+  context.save();
+  context.translate(box.left, box.top + metrics.baseline);
+  context.scale(box.width / natural, box.width / natural);
+  context.fillText(text, 0, 0);
+  context.restore();
+}
+
 export function measureGhosttyCell(
   context: CanvasRenderingContext2D,
   fontSize: number,
@@ -71,6 +202,7 @@ export function measureGhosttyCell(
     width: Math.max(1, widthMeasurement.width),
     height,
     baseline: Math.round((height - glyphHeight) / 2 + ascent),
+    charHeight: Math.max(1, glyphHeight),
   };
 }
 
@@ -102,6 +234,11 @@ export function renderGhosttySnapshot(options: {
   readonly cursorText?: string;
   /** Vertical origin of row 0; defaults to the horizontal padding. */
   readonly originY?: number;
+  /**
+   * Device pixels per context unit, so procedurally drawn cell geometry can
+   * snap to the pixel grid. The surface installs a matching transform.
+   */
+  readonly devicePixelScale?: number;
 }): void {
   const {
     context,
@@ -117,6 +254,7 @@ export function renderGhosttySnapshot(options: {
   const focused = options.focused ?? true;
   const selectionBackground = options.selectionBackground ?? DEFAULT_SELECTION_BACKGROUND;
   const originY = options.originY ?? padding;
+  const devicePixelScale = options.devicePixelScale ?? 1;
   const rowsToDraw = forceFull
     ? Array.from({ length: snapshot.rows }, (_, index) => index)
     : [...snapshot.dirtyRows];
@@ -188,28 +326,40 @@ export function renderGhosttySnapshot(options: {
         runStart += 1;
         continue;
       }
-      const runEnd = ghosttyTextRunEnd(row.cells, runStart, (cell) => sameTextStyle(cell, first));
+      // A glyph from a fallback face is fitted to its own cell, so it must not
+      // be swept into a run with the primary-face text around it.
+      const runEnd = PRIMARY_FACE_TEXT.test(first.text)
+        ? ghosttyTextRunEnd(
+            row.cells,
+            runStart,
+            (cell) => sameTextStyle(cell, first) && PRIMARY_FACE_TEXT.test(cell.text),
+          )
+        : ghosttyCellSpanEnd(row.cells, runStart);
       const text = row.cells
         .slice(runStart, runEnd)
         .map((cell) => cell.text)
         .join("");
       if (!first.invisible && text.trim().length > 0) {
+        const box = {
+          left: padding + runStart * metrics.width,
+          top,
+          width: (runEnd - runStart) * metrics.width,
+          height: metrics.height,
+        };
         context.save();
         context.beginPath();
-        context.rect(
-          padding + runStart * metrics.width,
-          top,
-          (runEnd - runStart) * metrics.width,
-          metrics.height,
-        );
+        context.rect(box.left, box.top, box.width, box.height);
         context.clip();
         context.font = fontForCell(first, fontSize, fontFamily);
         context.fillStyle = cssColor(first.foreground);
-        context.fillText(
+        drawCellText(
+          context,
           text,
-          padding + runStart * metrics.width,
-          top + metrics.baseline,
-          (runEnd - runStart) * metrics.width,
+          box,
+          metrics,
+          fontSize,
+          devicePixelScale,
+          cssColor(first.background),
         );
         context.restore();
       }
@@ -250,7 +400,15 @@ export function renderGhosttySnapshot(options: {
       if (cell?.text) {
         context.font = fontForCell(cell, fontSize, fontFamily);
         context.fillStyle = options.cursorText ?? cssColor(snapshot.background);
-        context.fillText(cell.text, left, top + metrics.baseline, metrics.width);
+        drawCellText(
+          context,
+          cell.text,
+          { left, top, width: metrics.width, height: metrics.height },
+          metrics,
+          fontSize,
+          devicePixelScale,
+          cssColor(snapshot.cursor),
+        );
       }
     }
   }
